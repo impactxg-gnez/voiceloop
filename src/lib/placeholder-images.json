@@ -1,3 +1,22 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-image",
+      "description": "Abstract sound waves visualization",
+      "imageUrl": "https://picsum.photos/seed/hero/1200/800",
+      "imageHint": "abstract soundwave"
+    },
+    {
+      "id": "dashboard-mockup",
+      "description": "Mockup of the Vocalize Feedback dashboard",
+      "imageUrl": "https://picsum.photos/seed/dashboard/1200/800",
+      "imageHint": "dashboard interface"
+    },
+    {
+      "id": "user-avatar",
+      "description": "A generic user avatar",
+      "imageUrl": "https://picsum.photos/seed/user-avatar/100/100",
+      "imageHint": "user avatar"
+    }
+  ]
 }
