@@ -1,112 +1,91 @@
-/**
- * @fileoverview Firestore Security Rules for Vocalize Feedback platform.
- *
- * Core Philosophy:
- * This ruleset prioritizes secure access to user-specific data and form ownership.
- * It uses a combination of ownership-based and public-read/owner-write access control patterns.
- *
- * Data Structure:
- * - /users/{userId}: Stores individual user profiles. Access is restricted to the owning user.
- * - /forms/{formId}: Stores feedback forms.  Accessible for listing by all, but create/update/delete are owner-only.
- * - /forms/{formId}/questions/{questionId}: Stores questions related to a specific form. Access is restricted to the form owner.
- * - /submissions/{submissionId}: Stores form submissions.
- *
- * Key Security Decisions:
- * - Users can only read/write their own profile data.
- * - Form listing is public, but form creation, updates, and deletion are restricted to the form owner.
- * - Questions are secured through form ownership.
- * - Denormalization for Authorization: The `Form` entity contains an `ownerUid` field, which is crucial for enforcing ownership-based access control.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Secures user profiles.
+     * @description Controls access to user profiles.
      * @path /users/{userId}
-     * @allow (create) User with matching ID can create their own profile.
-     * @allow (get, update, delete) User with matching ID can read/update/delete their profile.
-     * @deny (create, update, delete) User cannot create/modify another user's profile.
-     * @principle Enforces document ownership for all operations.
+     * @allow (get, list, update, delete) if the user is the owner of the profile.
+     * @allow (create) if the authenticated user's ID matches the userId.
+     * @deny (get, list, update, delete) if the user is not the owner of the profile.
+     * @principle Enforces document ownership for user profiles.
      */
     match /users/{userId} {
       function isSignedIn() {
         return request.auth != null;
       }
+
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
-      function isExistingOwner(userId) {
-        return isOwner(userId) && resource != null;
-      }
 
-      allow get: if isOwner(userId);
+      allow get: if isSignedIn() && isOwner(userId);
       allow list: if false;
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+      allow update: if isSignedIn() && isOwner(userId);
+      allow delete: if isSignedIn() && isOwner(userId);
     }
 
     /**
-     * @description Secures feedback forms. Allows public listing, but restricts creation, updates, and deletion to the form owner.
+     * @description Controls access to forms.
      * @path /forms/{formId}
-     * @allow (list) Any user can list all forms.
-     * @allow (create) User can create a form if the ownerUid matches their UID.
-     * @allow (get, update, delete) The form owner can read/update/delete the form.
-     * @deny (create, update, delete) Users cannot create/modify/delete forms they don't own.
-     * @principle Allows public read access but enforces document ownership for writes.
+     * @allow (get, list) Public read access.
+     * @allow (create) if the authenticated user's UID matches the ownerUid in the request data.
+     * @allow (update, delete) if the user is the owner of the form.
+     * @deny (create, update, delete) if the user is not the owner of the form.
+     * @principle Enforces owner-only writes for forms, public reads.
      */
     match /forms/{formId} {
       function isSignedIn() {
         return request.auth != null;
       }
-      function isOwner() {
-        return request.auth.uid == resource.data.ownerUid;
-      }
-      function isCreatingOwner() {
-        return request.auth.uid == request.resource.data.ownerUid;
+
+      function isOwner(ownerUid) {
+        return request.auth.uid == ownerUid;
       }
 
-      allow get, list: if true;
-      allow create: if isSignedIn() && isCreatingOwner();
-      allow update: if isSignedIn() && isOwner();
-      allow delete: if isSignedIn() && isOwner();
+      allow get: if true;
+      allow list: if true;
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isSignedIn() && isOwner(resource.data.ownerUid);
+      allow delete: if isSignedIn() && isOwner(resource.data.ownerUid);
     }
 
     /**
-     * @description Secures questions within a form. Access is controlled by form ownership.
+     * @description Controls access to questions within a form.
      * @path /forms/{formId}/questions/{questionId}
-     * @allow (get, list, create, update, delete) The owner of the form can manage questions.
-     * @deny (get, list, create, update, delete) Users cannot manage questions for forms they don't own.
-     * @principle Enforces document ownership for all operations.
+     * @allow (get, list) Public read access.
+     * @allow (create, update, delete) if the user is the owner of the parent form.
+     * @deny (create, update, delete) if the user is not the owner of the parent form.
+     * @principle Enforces owner-only writes for questions, public reads.
      */
     match /forms/{formId}/questions/{questionId} {
       function isSignedIn() {
         return request.auth != null;
       }
+
       function isFormOwner(formId) {
         return get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid;
       }
-      allow get: if isSignedIn() && isFormOwner(formId);
-      allow list: if isSignedIn() && isFormOwner(formId);
+
+      allow get: if true;
+      allow list: if true;
       allow create: if isSignedIn() && isFormOwner(formId);
       allow update: if isSignedIn() && isFormOwner(formId);
       allow delete: if isSignedIn() && isFormOwner(formId);
     }
 
     /**
-     * @description Secures form submissions.
+     * @description Controls access to submissions.
      * @path /submissions/{submissionId}
-     * @allow (create) Any authenticated user can create a submission.
-     * @allow (get, list) Any authenticated user can read all submissions
-     * @deny (update, delete) Submissions cannot be updated or deleted.
+     * @allow (get, list, create) Public access. Authenticated users should include their uid.
+     * @deny (update, delete) No updates or deletes are allowed on submissions.
+     * @principle Allows public submissions, restricts modifications.
      */
     match /submissions/{submissionId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
+      allow get: if true;
+      allow list: if true;
+      allow create: if true;
       allow update: if false;
       allow delete: if false;
     }
