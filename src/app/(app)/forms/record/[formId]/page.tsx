@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, Send, Loader2, CheckCircle } from 'lucide-react';
+import { Mic, MicOff, Send, Loader2, CheckCircle, Play, Volume2 } from 'lucide-react';
 import { transcribeVoiceResponse } from '@/ai/flows/transcribe-voice-responses';
+import { generateQuestionAudio } from '@/ai/flows/generate-question-audio';
 import { useToast } from '@/hooks/use-toast';
 
 type QuestionState = {
@@ -15,6 +16,9 @@ type QuestionState = {
   audioChunks: Blob[];
   transcription?: string;
   analyser?: AnalyserNode;
+  audioUrl?: string;
+  isGeneratingAudio: boolean;
+  isPlayingAudio: boolean;
 };
 
 // Add a ref for animation frame IDs to decouple from react state
@@ -32,6 +36,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const initialStates: Record<number, QuestionState> = {};
@@ -41,6 +46,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         isTranscribing: false,
         isSubmitted: false,
         audioChunks: [],
+        isGeneratingAudio: false,
+        isPlayingAudio: false,
       };
     });
     setQuestionStates(initialStates);
@@ -48,7 +55,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     if (typeof window !== 'undefined' && !audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
-  }, [questions.length]);
+  }, [questions]);
 
   const setupMediaRecorder = async () => {
     if (typeof window !== 'undefined' && 'MediaRecorder' in window) {
@@ -92,7 +99,21 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   useEffect(() => {
     setupMediaRecorder();
+    audioRef.current = new Audio();
     
+    const currentAudioRef = audioRef.current;
+    const onEnded = () => {
+      // Find which question is playing and update its state
+      for (const index in questionStates) {
+        if (questionStates[index].isPlayingAudio) {
+          setQuestionStates(prev => ({...prev, [index]: {...prev[index], isPlayingAudio: false}}));
+          break;
+        }
+      }
+    }
+    
+    currentAudioRef.addEventListener('ended', onEnded);
+
     return () => {
       Object.values(animationFrameIds).forEach(cancelAnimationFrame);
       if (audioStreamSourceRef.current) {
@@ -103,8 +124,11 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         audioContextRef.current.close();
         audioContextRef.current = null;
       }
+      if (currentAudioRef) {
+        currentAudioRef.removeEventListener('ended', onEnded);
+      }
     };
-  }, []);
+  }, [questionStates]);
 
   const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
     const canvasCtx = canvas.getContext('2d');
@@ -113,33 +137,32 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     
     const drawFrame = () => {
-        analyser.getByteTimeDomainData(dataArray);
+      animationFrameIds[questionIndex] = requestAnimationFrame(drawFrame);
+      analyser.getByteTimeDomainData(dataArray);
 
-        canvasCtx.fillStyle = 'hsl(var(--secondary))';
-        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.lineWidth = 2;
-        canvasCtx.strokeStyle = 'hsl(var(--primary))';
-        canvasCtx.beginPath();
+      canvasCtx.fillStyle = 'hsl(var(--secondary))';
+      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      canvasCtx.lineWidth = 2;
+      canvasCtx.strokeStyle = 'hsl(var(--primary))';
+      canvasCtx.beginPath();
 
-        const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
-        let x = 0;
+      const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
+      let x = 0;
 
-        for (let i = 0; i < analyser.frequencyBinCount; i++) {
-            const v = dataArray[i] / 128.0;
-            const y = v * canvas.height / 2;
+      for (let i = 0; i < analyser.frequencyBinCount; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = v * canvas.height / 2;
 
-            if (i === 0) {
-                canvasCtx.moveTo(x, y);
-            } else {
-                canvasCtx.lineTo(x, y);
-            }
-            x += sliceWidth;
-        }
+          if (i === 0) {
+              canvasCtx.moveTo(x, y);
+          } else {
+              canvasCtx.lineTo(x, y);
+          }
+          x += sliceWidth;
+      }
 
-        canvasCtx.lineTo(canvas.width, canvas.height / 2);
-        canvasCtx.stroke();
-        
-        animationFrameIds[questionIndex] = requestAnimationFrame(drawFrame);
+      canvasCtx.lineTo(canvas.width, canvas.height / 2);
+      canvasCtx.stroke();
     };
     
     drawFrame();
@@ -198,19 +221,19 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         cancelAnimationFrame(animationFrameIds[questionIndex]);
         delete animationFrameIds[questionIndex];
       }
-
-      setQuestionStates(prev => ({
-        ...prev,
-        [questionIndex]: { ...prev[questionIndex], isRecording: false, analyser: undefined }
-      }));
-      setActiveRecordingIndex(null);
-
+      
       const canvas = canvasRefs.current[questionIndex];
       const canvasCtx = canvas?.getContext('2d');
       if (canvas && canvasCtx) {
         canvasCtx.fillStyle = 'hsl(var(--secondary))';
         canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
       }
+      
+      setQuestionStates(prev => ({
+        ...prev,
+        [questionIndex]: { ...prev[questionIndex], isRecording: false, analyser: undefined }
+      }));
+      setActiveRecordingIndex(null);
     }
   };
 
@@ -261,6 +284,52 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     };
   };
 
+  const handlePlayQuestion = async (questionIndex: number) => {
+    const state = questionStates[questionIndex];
+    const questionText = questions[questionIndex];
+    
+    if (state.isPlayingAudio && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: false } }));
+      return;
+    }
+
+    if (state.audioUrl && audioRef.current) {
+        audioRef.current.src = state.audioUrl;
+        audioRef.current.play();
+        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: true } }));
+        return;
+    }
+
+    setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: true } }));
+
+    try {
+        const result = await generateQuestionAudio({ question: questionText });
+        if (audioRef.current) {
+            audioRef.current.src = result.audioUrl;
+            audioRef.current.play();
+        }
+        setQuestionStates(prev => ({
+            ...prev,
+            [questionIndex]: {
+                ...prev[questionIndex],
+                audioUrl: result.audioUrl,
+                isGeneratingAudio: false,
+                isPlayingAudio: true,
+            }
+        }));
+    } catch (error) {
+        console.error('Error generating audio:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Audio Generation Failed',
+            description: 'Could not generate audio for the question.',
+        });
+        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: false } }));
+    }
+  };
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-secondary py-12">
       <Card className="w-full max-w-2xl mx-4">
@@ -280,7 +349,18 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
             
             return (
               <div key={index} className="p-4 border rounded-lg">
-                <p className="font-semibold mb-4">{index + 1}. {q}</p>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="font-semibold">{index + 1}. {q}</p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handlePlayQuestion(index)}
+                    disabled={state.isGeneratingAudio}
+                  >
+                    {state.isGeneratingAudio ? <Loader2 className="h-5 w-5 animate-spin" /> : (state.isPlayingAudio ? <Volume2 className="h-5 w-5" /> : <Play className="h-5 w-5" />) }
+                  </Button>
+                </div>
+
                 <div className="flex flex-col items-center gap-4">
                    <div className="flex items-center gap-4">
                     <button
