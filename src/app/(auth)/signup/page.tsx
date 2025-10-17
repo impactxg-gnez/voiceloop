@@ -8,7 +8,7 @@ import { Logo } from "@/components/logo";
 import { useAuth, useUser } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
@@ -58,6 +58,29 @@ export default function SignupPage() {
       }
     }
   };
+
+  const handleGoogleSignIn = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+      router.push('/dashboard');
+    } catch (error) {
+      console.error("Google sign in error", error);
+      if (error instanceof FirebaseError) {
+        toast({
+          variant: "destructive",
+          title: "Google Sign In Failed",
+          description: error.message,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Google Sign In Failed",
+          description: "An unexpected error occurred.",
+        });
+      }
+    }
+  };
   
   if (isUserLoading || user) {
     return <div>Loading...</div>; // Or a proper loader
@@ -89,6 +112,21 @@ export default function SignupPage() {
             </div>
             <Button className="w-full" type="submit">Create Account</Button>
           </form>
+
+          <div className="relative mt-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+          </div>
+          <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn}>
+            Sign up with Google
+          </Button>
+
            <div className="mt-4 text-center text-sm">
             Already have an account?{" "}
             <Link href="/login" className="underline text-primary">

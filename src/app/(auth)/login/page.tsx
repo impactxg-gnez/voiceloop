@@ -9,9 +9,9 @@ import Link from "next/link";
 import { useAuth, useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { initiateEmailSignIn } from "@/firebase/non-blocking-login";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 export default function LoginPage() {
   const { user, isUserLoading } = useUser();
@@ -44,6 +44,29 @@ export default function LoginPage() {
         toast({
           variant: "destructive",
           title: "Sign In Failed",
+          description: "An unexpected error occurred.",
+        });
+      }
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+      router.push('/dashboard');
+    } catch (error) {
+      console.error("Google sign in error", error);
+      if (error instanceof FirebaseError) {
+        toast({
+          variant: "destructive",
+          title: "Google Sign In Failed",
+          description: error.message,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Google Sign In Failed",
           description: "An unexpected error occurred.",
         });
       }
@@ -87,7 +110,7 @@ export default function LoginPage() {
               </span>
             </div>
           </div>
-          <Button variant="outline" className="w-full mt-4">
+          <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn}>
             Sign in with Google
           </Button>
            <div className="mt-4 text-center text-sm">
