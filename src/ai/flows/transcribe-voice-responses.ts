@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * @fileOverview A flow that transcribes voice responses from audio files using OpenAI's Whisper API.
+ * @fileOverview A flow that transcribes voice responses from audio files using Gemini.
  *
  * - transcribeVoiceResponse - A function that handles the transcription process.
  * - TranscribeVoiceResponseInput - The input type for the transcribeVoiceResponse function.
@@ -14,7 +14,9 @@ import {z} from 'genkit';
 const TranscribeVoiceResponseInputSchema = z.object({
   audioPath: z
     .string()
-    .describe('The path to the audio file in Cloud Storage.'),
+    .describe(
+      "A voice recording, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+    ),
 });
 export type TranscribeVoiceResponseInput = z.infer<
   typeof TranscribeVoiceResponseInputSchema
@@ -22,8 +24,6 @@ export type TranscribeVoiceResponseInput = z.infer<
 
 const TranscribeVoiceResponseOutputSchema = z.object({
   text: z.string().describe('The transcribed text from the audio file.'),
-  language: z.string().optional().describe('The detected language of the audio.'),
-  confidence: z.number().optional().describe('The confidence level of the transcription.'),
 });
 export type TranscribeVoiceResponseOutput = z.infer<
   typeof TranscribeVoiceResponseOutputSchema
@@ -35,18 +35,6 @@ export async function transcribeVoiceResponse(
   return transcribeVoiceResponseFlow(input);
 }
 
-const transcribeVoiceResponsePrompt = ai.definePrompt({
-  name: 'transcribeVoiceResponsePrompt',
-  input: {schema: TranscribeVoiceResponseInputSchema},
-  output: {schema: TranscribeVoiceResponseOutputSchema},
-  prompt: `You are a transcription service that converts audio to text.
-
-  Transcribe the audio file located at the following path: {{{audioPath}}}.
-
-  Return the transcribed text, the language detected in the audio, and the confidence level of the transcription.
-  `, // Changed file path to audio path
-});
-
 const transcribeVoiceResponseFlow = ai.defineFlow(
   {
     name: 'transcribeVoiceResponseFlow',
@@ -54,7 +42,13 @@ const transcribeVoiceResponseFlow = ai.defineFlow(
     outputSchema: TranscribeVoiceResponseOutputSchema,
   },
   async input => {
-    const {output} = await transcribeVoiceResponsePrompt(input);
-    return output!;
+    const {text} = await ai.generate({
+      model: 'googleai/gemini-2.5-flash',
+      prompt: [
+        {text: 'Transcribe the following audio:'},
+        {media: {url: input.audioPath}}
+      ],
+    });
+    return {text};
   }
 );
