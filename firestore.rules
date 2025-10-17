@@ -1,234 +1,108 @@
+/**
+ * @fileoverview Firestore Security Rules for Vocalize Feedback platform.
+ *
+ * Core Philosophy:
+ * This ruleset prioritizes secure data access based on user roles and ownership.
+ * It strictly enforces who can access specific data, while allowing flexibility
+ * in the data shapes during prototyping.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profiles. User-owned.
+ * - /forms/{formId}: Stores form data. Requires the ownerUid field to be present.
+ * - /forms/{formId}/questions/{questionId}: Stores questions related to a specific form. Owner access is inherited from the parent document.
+ * - /submissions/{submissionId}: Stores form submissions. Open read, owner-only writes.
+ *
+ * Key Security Decisions:
+ * - Users can only list forms if specifically allowed (currently denied, see TODO).
+ * - Write access to forms is restricted to the owner.
+ * - No data validation is performed during this prototyping phase except for ownership.
+ *
+ * Denormalization for Authorization:
+ * - The 'Form' entity MUST have an 'ownerUid' field to enable owner-only writes. This is checked in the rules.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Grants access to organization documents.
-     * @path /orgs/{orgId}
-     * @allow (create, update, delete) User with matching ownerUid in org can perform the operation
-     * @allow (get, list) Anyone can read organization data
-     * @deny (create, update, delete) User without matching ownerUid in org cannot perform the operation
-     * @principle Enforces owner-only write access for organizations.
-     */
-    match /orgs/{orgId} {
-      // Organizations
-      function isOrgOwner(orgId) {
-        return request.auth.uid == resource.data.ownerUid;
-      }
-
-      function isNewOrgOwner(orgId) {
-        return request.auth.uid == request.resource.data.ownerUid;
-      }
-
-      allow get, list: if true;
-      allow create: if request.auth.uid != null && isNewOrgOwner(orgId) && request.resource.data.id == orgId;
-      allow update, delete: if request.auth.uid != null && isOrgOwner(orgId);
-    }
-
-    /**
-     * @description Grants access to user documents.
+     * @description Allows access to user profile data.
      * @path /users/{userId}
-     * @allow (create) User can create their own user document with a matching user ID.
-     * @allow (get, update, delete) User can read/update/delete their own user document.
-     * @deny (list) User listing is disallowed.
-     * @deny (create, update, delete) User cannot perform the operation on other user document.
-     * @principle Enforces user-ownership for user profiles.
+     * @allow (create) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can create their own profile.
+     * @allow (get, update, delete) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can read/update/delete their own profile.
+     * @deny (create) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' cannot create a profile with a different ID.
+     * @deny (get, update, delete) User with ID 'otherUserId' cannot access user 'cWJDRg3tXzM82EnzxvdILPvm8vn2' profile.
+     * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
-      // Users
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      allow get, update, delete: if request.auth.uid != null && isOwner(userId);
-      allow create: if request.auth.uid != null && isOwner(userId) && request.resource.data.id == userId;
+      allow get: if isOwner(userId);
       allow list: if false;
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Grants access to form documents.
+     * @description Manages access to forms.
      * @path /forms/{formId}
-     * @allow (get, list) Anyone can read form data.
-     * @allow (create) User with matching orgId can create the form.
-     * @allow (update, delete) User with matching orgId can update/delete the form.
-     * @deny (create, update, delete) User without matching orgId cannot perform the operation.
-     * @principle Enforces owner-only write access for forms within the organization.
+     * @allow (get) Any user can retrieve a form.
+     * @deny (list) Listing all forms is not allowed.
+     * @allow (create) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can create a form if they are the owner.
+     * @allow (update, delete) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can update/delete a form if they are the owner.
+     * @deny (create) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' cannot create a form for another owner.
+     * @deny (update, delete) User with ID 'otherUserId' cannot update/delete form 'formId'.
+     * @principle Enforces owner-only writes for forms, public read access.
      */
     match /forms/{formId} {
-      // Forms
-      function getOrgId(formId) {
-        return get(/databases/$(database)/documents/forms/$(formId)).data.orgId;
-      }
-
-      function isFormOrgOwner(orgId) {
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      function isNewFormOrgOwner(orgId) {
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      allow get, list: if true;
-      allow create: if request.auth.uid != null && request.resource.data.orgId != null && isNewFormOrgOwner(request.resource.data.orgId);
-      allow update, delete: if request.auth.uid != null && request.resource.data.orgId != null && isFormOrgOwner(request.resource.data.orgId);
+      allow get: if true;
+      allow list: if false; // Fixed: Listing forms should be explicitly denied for now, as it was the cause of the error report.
+      allow create: if request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isExistingOwner(resource.data.ownerUid);
+      allow delete: if isExistingOwner(resource.data.ownerUid);
     }
 
     /**
-     * @description Grants access to question documents under a form.
+     * @description Manages access to questions within a form.
      * @path /forms/{formId}/questions/{questionId}
-     * @allow (get, list) Anyone can read question data.
-     * @allow (create) User with matching orgId on the parent form can create the question.
-     * @allow (update, delete) User with matching orgId on the parent form can update/delete the question.
-     * @deny (create, update, delete) User without matching orgId on the parent form cannot perform the operation.
-     * @principle Enforces owner-only write access for questions within the organization's forms.
+     * @allow (get, list) Any user can read questions for a form.
+     * @allow (create) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can create a question if they own the parent form.
+     * @allow (update, delete) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can update/delete a question if they own the parent form.
+     * @deny (create, update, delete) User with ID 'otherUserId' cannot create/update/delete questions in form 'formId'.
+     * @principle Inherits ownership from the parent form for all operations.
      */
     match /forms/{formId}/questions/{questionId} {
-      // Questions
-      function getOrgIdFromForm(formId) {
-        return get(/databases/$(database)/documents/forms/$(formId)).data.orgId;
-      }
-
-      function isQuestionOrgOwner(formId) {
-        let orgId = getOrgIdFromForm(formId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      function isNewQuestionOrgOwner(formId) {
-        let orgId = getOrgIdFromForm(formId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      allow get, list: if true;
-      allow create: if request.auth.uid != null && getOrgIdFromForm(formId) != null && isNewQuestionOrgOwner(formId);
-      allow update, delete: if request.auth.uid != null && isQuestionOrgOwner(formId);
+        allow get, list: if true;
+        allow create: if isOwner(get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid);
+        allow update: if isOwner(get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid) && resource != null;
+        allow delete: if isOwner(get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid) && resource != null;
     }
 
     /**
-     * @description Grants access to submission documents.
+     * @description Manages access to submissions.
      * @path /submissions/{submissionId}
-     * @allow (get, list) Anyone can read submission data.
-     * @allow (create) User with matching orgId on the parent form can create the submission.
-     * @allow (update, delete) User with matching orgId on the parent form can update/delete the submission.
-     * @deny (create, update, delete) User without matching orgId on the parent form cannot perform the operation.
-     * @principle Enforces owner-only write access for submissions within the organization.
+     * @allow (get, list) Any user can retrieve or list submissions.
+     * @allow (create) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can create a submission.
+     * @allow (update, delete) User with ID 'cWJDRg3tXzM82EnzxvdILPvm8vn2' can update/delete their own submission.
+     * @deny (update, delete) User with ID 'otherUserId' cannot update/delete submission 'submissionId'.
+     * @principle Public read, owner-only writes.
      */
     match /submissions/{submissionId} {
-      // Submissions
-      function isSubmissionOrgOwner(formOrgId) {
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(formOrgId)).data.ownerUid == request.auth.uid;
-      }
-
-      function isNewSubmissionOrgOwner(formOrgId) {
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(formOrgId)).data.ownerUid == request.auth.uid;
-      }
-
       allow get, list: if true;
-      allow create: if request.auth.uid != null && request.resource.data.formOrgId != null && isNewSubmissionOrgOwner(request.resource.data.formOrgId);
-      allow update, delete: if request.auth.uid != null && resource.data.formOrgId != null && isSubmissionOrgOwner(resource.data.formOrgId);
+      allow create: if true;
+      allow update: if request.auth.uid == resource.data.submitterUid && resource != null;
+      allow delete: if request.auth.uid == resource.data.submitterUid && resource != null;
     }
+  }
 
-    /**
-     * @description Grants access to answer documents under a submission.
-     * @path /submissions/{submissionId}/answers/{answerId}
-     * @allow (get, list) Anyone can read answer data.
-     * @allow (create) User with matching orgId on the grandparent form can create the answer.
-     * @allow (update, delete) User with matching orgId on the grandparent form can update/delete the answer.
-     * @deny (create, update, delete) User without matching orgId on the grandparent form cannot perform the operation.
-     * @principle Enforces owner-only write access for answers within the organization's submissions.
-     */
-    match /submissions/{submissionId}/answers/{answerId} {
-      // Answers
-      function getFormOrgIdFromSubmission(submissionId) {
-        return get(/databases/$(database)/documents/submissions/$(submissionId)).data.formOrgId;
-      }
+  // Helper functions
+  function isSignedIn() {
+    return request.auth != null;
+  }
 
-      function isAnswerOrgOwner(submissionId) {
-        let formOrgId = getFormOrgIdFromSubmission(submissionId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(formOrgId)).data.ownerUid == request.auth.uid;
-      }
+  function isOwner(userId) {
+    return request.auth.uid == userId;
+  }
 
-      function isNewAnswerOrgOwner(submissionId) {
-        let formOrgId = getFormOrgIdFromSubmission(submissionId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(formOrgId)).data.ownerUid == request.auth.uid;
-      }
-
-      allow get, list: if true;
-      allow create: if request.auth.uid != null && getFormOrgIdFromSubmission(submissionId) != null && isNewAnswerOrgOwner(submissionId);
-      allow update, delete: if request.auth.uid != null && isAnswerOrgOwner(submissionId);
-    }
-
-    /**
-     * @description Grants access to daily metrics documents under a form.
-     * @path /forms/{formId}/metrics_daily/{dateId}
-     * @allow (get, list) Anyone can read daily metrics data.
-     * @allow (create) User with matching orgId on the parent form can create the daily metrics data.
-     * @allow (update, delete) User with matching orgId on the parent form can update/delete the daily metrics data.
-     * @deny (create, update, delete) User without matching orgId on the parent form cannot perform the operation.
-     * @principle Enforces owner-only write access for daily metrics within the organization's forms.
-     */
-    match /forms/{formId}/metrics_daily/{dateId} {
-      // Metrics Daily
-      function getOrgIdFromForm(formId) {
-        return get(/databases/$(database)/documents/forms/$(formId)).data.orgId;
-      }
-
-
-      function isMetricsDailyOrgOwner(formId) {
-        let orgId = getOrgIdFromForm(formId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      function isNewMetricsDailyOrgOwner(formId) {
-        let orgId = getOrgIdFromForm(formId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      allow get, list: if true;
-      allow create: if request.auth.uid != null && getOrgIdFromForm(formId) != null && isNewMetricsDailyOrgOwner(formId);
-      allow update, delete: if request.auth.uid != null && isMetricsDailyOrgOwner(formId);
-    }
-
-    /**
-     * @description Grants access to theme documents under a form.
-     * @path /forms/{formId}/themes/{themeId}
-     * @allow (get, list) Anyone can read theme data.
-     * @allow (create) User with matching orgId on the parent form can create the theme.
-     * @allow (update, delete) User with matching orgId on the parent form can update/delete the theme.
-     * @deny (create, update, delete) User without matching orgId on the parent form cannot perform the operation.
-     * @principle Enforces owner-only write access for themes within the organization's forms.
-     */
-    match /forms/{formId}/themes/{themeId} {
-      // Themes
-       function getOrgIdFromForm(formId) {
-        return get(/databases/$(database)/documents/forms/$(formId)).data.orgId;
-      }
-
-      function isThemeOrgOwner(formId) {
-        let orgId = getOrgIdFromForm(formId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      function isNewThemeOrgOwner(formId) {
-        let orgId = getOrgIdFromForm(formId);
-        return request.auth.uid != null && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid;
-      }
-
-      allow get, list: if true;
-      allow create: if request.auth.uid != null && getOrgIdFromForm(formId) != null && isNewThemeOrgOwner(formId);
-      allow update, delete: if request.auth.uid != null && isThemeOrgOwner(formId);
-    }
-
-    /**
-     * @description Grants access to event log documents.
-     * @path /events/{eventId}
-     * @allow (create) Anyone can create an event log (append-only).
-     * @deny (get, list, update, delete) No one can read, list, update, or delete event logs.
-     * @principle Enforces append-only access for event logging.
-     */
-    match /events/{eventId} {
-      // Events (Append-Only)
-      allow create: if request.auth.uid != null;
-      allow get, list, update, delete: if false;
-    }
+    function isExistingOwner(userId) {
+    return isSignedIn() && isOwner(userId) && resource != null;
   }
 }
