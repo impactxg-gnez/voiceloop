@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 
 export default function LoginPage() {
   const { user, isUserLoading } = useUser();
@@ -30,7 +30,7 @@ export default function LoginPage() {
   const handleSignIn = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await auth.signInWithEmailAndPassword(email, password);
+      await signInWithEmailAndPassword(auth, email, password);
       router.push('/dashboard');
     } catch (error) {
       console.error("Sign in error", error);
