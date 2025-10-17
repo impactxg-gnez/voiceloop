@@ -1,8 +1,101 @@
+'use client';
+
+import { useCollection, useFirestore, useUser } from "@/firebase";
+import { useMemoFirebase } from "@/firebase/provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { FileText, MessageSquare, PlusCircle, Smile } from "lucide-react";
+import { FileText, MessageSquare, PlusCircle, Smile, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { collection, query, where, orderBy, limit } from "firebase/firestore";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDistanceToNow } from "date-fns";
+
+type Form = {
+  id: string;
+  title: string;
+  createdAt: { toDate: () => Date };
+};
+
+function RecentForms() {
+  const firestore = useFirestore();
+  const { user } = useUser();
+
+  const recentFormsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+      collection(firestore, "forms"),
+      where("ownerUid", "==", user.uid),
+      orderBy("createdAt", "desc"),
+      limit(5)
+    );
+  }, [firestore, user]);
+
+  const { data: forms, isLoading } = useCollection<Form>(recentFormsQuery);
+
+  if (isLoading) {
+    return (
+       <div className="border rounded-lg p-6">
+        <h2 className="text-2xl font-semibold mb-4">Recent Forms</h2>
+        <div className="space-y-4">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!forms || forms.length === 0) {
+    return (
+      <div>
+        <h2 className="text-2xl font-semibold mb-4">Recent Forms</h2>
+        <Card className="flex flex-col items-center justify-center text-center p-12">
+          <CardHeader>
+            <CardTitle>No Forms Created Yet</CardTitle>
+            <CardDescription className="mt-2">
+              Create your first form to start collecting voice feedback from your audience.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild size="lg">
+              <Link href="/forms/new">
+                <PlusCircle className="mr-2 h-5 w-5" />
+                Create Your First Form
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 className="text-2xl font-semibold mb-4">Recent Forms</h2>
+      <div className="border rounded-lg">
+        <ul className="divide-y">
+          {forms.map((form) => (
+            <li key={form.id} className="p-4 hover:bg-muted/50 transition-colors flex justify-between items-center">
+              <div>
+                <Link href={`/forms/record/${form.id}`} className="font-semibold hover:underline">{form.title}</Link>
+                <p className="text-sm text-muted-foreground">
+                  Created {formatDistanceToNow(form.createdAt.toDate(), { addSuffix: true })}
+                </p>
+              </div>
+               <Button asChild variant="outline" size="sm">
+                <Link href={`/forms/record/${form.id}`}>
+                  View Form <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 
 export default function DashboardPage() {
   return (
@@ -54,25 +147,8 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Recent Forms</h2>
-            <Card className="flex flex-col items-center justify-center text-center p-12">
-              <CardHeader>
-                <CardTitle>No Forms Created Yet</CardTitle>
-                <CardDescription className="mt-2">
-                  Create your first form to start collecting voice feedback from your audience.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild size="lg">
-                  <Link href="/forms/new">
-                    <PlusCircle className="mr-2 h-5 w-5" />
-                    Create Your First Form
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+          <RecentForms />
+
         </div>
       </main>
     </div>

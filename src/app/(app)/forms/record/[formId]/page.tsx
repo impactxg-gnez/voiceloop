@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mic, MicOff, Send, Loader2, CheckCircle, Play, Volume2, ArrowLeft, ArrowRight } from 'lucide-react';
@@ -9,6 +8,9 @@ import { transcribeVoiceResponse } from '@/ai/flows/transcribe-voice-responses';
 import { generateQuestionAudio } from '@/ai/flows/generate-question-audio';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
+import { useCollection, useDoc, useFirestore, useUser } from '@/firebase';
+import { useMemoFirebase } from '@/firebase/provider';
+import { collection, doc, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 
 type QuestionState = {
   isRecording: boolean;
@@ -22,15 +24,23 @@ type QuestionState = {
   isPlayingAudio: boolean;
 };
 
-// Add a ref for animation frame IDs to decouple from react state
+type FormDoc = { title: string };
+type QuestionDoc = { text: string; order: number };
+
 const animationFrameIds: Record<number, number> = {};
 
 export default function RecordFormPage({ params }: { params: { formId: string } }) {
-  const searchParams = useSearchParams();
-  const title = searchParams.get('title');
-  const questions = searchParams.getAll('question');
-  
+  const { formId } = params;
+  const firestore = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
+
+  const formDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'forms', formId) : null, [firestore, formId]);
+  const { data: form, isLoading: isLoadingForm } = useDoc<FormDoc>(formDocRef);
+
+  const questionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'forms', formId, 'questions'), orderBy('order')) : null, [firestore, formId]);
+  const { data: questions, isLoading: isLoadingQuestions } = useCollection<QuestionDoc>(questionsQuery);
+  
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [questionStates, setQuestionStates] = useState<Record<number, QuestionState>>({});
   const [activeRecordingIndex, setActiveRecordingIndex] = useState<number | null>(null);
@@ -42,6 +52,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    if (!questions) return;
     const initialStates: Record<number, QuestionState> = {};
     questions.forEach((_, index) => {
       initialStates[index] = {
@@ -102,11 +113,10 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   const handlePlayQuestion = useCallback(async (questionIndex: number) => {
     const state = questionStates[questionIndex];
-    const questionText = questions[questionIndex];
+    if (!questions || !state) return;
     
-    // Do nothing if state isn't initialized yet
-    if (!state) return;
-
+    const questionText = questions[questionIndex].text;
+    
     if (state.isPlayingAudio && audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -114,10 +124,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       return;
     }
 
-    // Stop any other audio that might be playing
     if (audioRef.current && !audioRef.current.paused) {
       audioRef.current.pause();
-      // Reset all other playing states
       const newStates = { ...questionStates };
       Object.keys(newStates).forEach(key => {
         const index = parseInt(key);
@@ -170,7 +178,6 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     
     const currentAudioRef = audioRef.current;
     const onEnded = () => {
-      // Find which question is playing and update its state
       setQuestionStates(prevStates => {
         const newStates = {...prevStates};
         for (const index in newStates) {
@@ -202,13 +209,11 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   }, []);
 
   useEffect(() => {
-    // Auto-play the question audio when the question changes,
-    // but not on the initial load of the component.
     if (Object.keys(questionStates).length > 0) {
       handlePlayQuestion(currentQuestionIndex);
     }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentQuestionIndex, questionStates]);
+  }, [currentQuestionIndex]);
 
   const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
     const canvasCtx = canvas.getContext('2d');
@@ -327,6 +332,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       });
       return;
     }
+    if (!firestore || !questions) return;
+
 
     setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: true } }));
     
@@ -338,7 +345,18 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       
       try {
         const result = await transcribeVoiceResponse({ audioPath: base64Audio });
-        console.log(`Transcription for question ${questionIndex}:`, result.text);
+        
+        // Save submission to Firestore
+        await addDoc(collection(firestore, 'submissions'), {
+            formId: formId,
+            questionId: questions[questionIndex].id,
+            questionText: questions[questionIndex].text,
+            audioUrl: '', // In a real app you'd upload audio to Cloud Storage and save the URL
+            transcription: result.text,
+            submitterUid: user?.uid ?? null,
+            createdAt: serverTimestamp(),
+        });
+        
         toast({
           title: 'Feedback Submitted!',
           description: `Transcription: "${result.text}"`,
@@ -356,24 +374,37 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         console.error('Error transcribing audio:', error);
         toast({
           variant: 'destructive',
-          title: 'Transcription Failed',
-          description: 'Could not transcribe the audio. Please try again.',
+          title: 'Submission Failed',
+          description: 'Could not save your feedback. Please try again.',
         });
         setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: false } }));
       }
     };
   };
 
-  
-
-  const currentQuestionText = questions[currentQuestionIndex];
+  const isLoading = isLoadingForm || isLoadingQuestions;
+  const currentQuestionText = questions?.[currentQuestionIndex]?.text;
   const currentQuestionState = questionStates[currentQuestionIndex];
-  const progressPercentage = ((currentQuestionIndex + 1) / questions.length) * 100;
+  const progressPercentage = questions ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
   
-  if (!currentQuestionState) {
+  if (isLoading) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-secondary">
             <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+    );
+  }
+
+  if (!form || !questions || !currentQuestionState) {
+     return (
+        <div className="flex items-center justify-center min-h-screen bg-secondary">
+            <div className="text-center">
+              <h1 className="text-2xl font-bold">Form not found</h1>
+              <p className="text-muted-foreground">This form may have been deleted or the link is incorrect.</p>
+              <Button asChild className="mt-4">
+                <Link href="/dashboard">Go to Dashboard</Link>
+              </Button>
+            </div>
         </div>
     );
   }
@@ -385,7 +416,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     <div className="flex flex-col items-center justify-center min-h-screen bg-secondary py-12 px-4">
         <Card className="w-full max-w-2xl mx-auto mb-4">
             <CardHeader>
-                <CardTitle className="text-2xl">{title || 'Voice Feedback Form'}</CardTitle>
+                <CardTitle className="text-2xl">{form.title || 'Voice Feedback Form'}</CardTitle>
                 <CardDescription>
                 Please provide your voice feedback for the question below.
                 </CardDescription>
@@ -475,7 +506,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                 ) : (
-                    <Button onClick={() => window.history.back()}>
+                    <Button onClick={() => router.push('/dashboard')}>
                         Finish
                         <CheckCircle className="ml-2 h-4 w-4" />
                     </Button>
