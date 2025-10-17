@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, Send, Loader2, CheckCircle, Play, Volume2 } from 'lucide-react';
+import { Mic, MicOff, Send, Loader2, CheckCircle, Play, Volume2, ArrowLeft, ArrowRight } from 'lucide-react';
 import { transcribeVoiceResponse } from '@/ai/flows/transcribe-voice-responses';
 import { generateQuestionAudio } from '@/ai/flows/generate-question-audio';
 import { useToast } from '@/hooks/use-toast';
+import { Progress } from '@/components/ui/progress';
 
 type QuestionState = {
   isRecording: boolean;
@@ -33,6 +34,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [questionStates, setQuestionStates] = useState<Record<number, QuestionState>>({});
   const [activeRecordingIndex, setActiveRecordingIndex] = useState<number | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
@@ -128,7 +131,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         currentAudioRef.removeEventListener('ended', onEnded);
       }
     };
-  }, [questionStates]);
+  }, []); // Changed dependency to empty array as questionStates is not needed here
 
   const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
     const canvasCtx = canvas.getContext('2d');
@@ -295,6 +298,21 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       return;
     }
 
+    // Stop any other audio that might be playing
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+      // Reset all other playing states
+      const newStates = { ...questionStates };
+      Object.keys(newStates).forEach(key => {
+        const index = parseInt(key);
+        if (index !== questionIndex) {
+            newStates[index] = { ...newStates[index], isPlayingAudio: false };
+        }
+      });
+      setQuestionStates(newStates);
+    }
+
+
     if (state.audioUrl && audioRef.current) {
         audioRef.current.src = state.audioUrl;
         audioRef.current.play();
@@ -330,98 +348,121 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     }
   };
 
+  const currentQuestionText = questions[currentQuestionIndex];
+  const currentQuestionState = questionStates[currentQuestionIndex];
+  const progressPercentage = ((currentQuestionIndex + 1) / questions.length) * 100;
+  
+  if (!currentQuestionState) {
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-secondary">
+            <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+    );
+  }
+
+  const isRecordingThis = currentQuestionState.isRecording;
+  const isRecordingAnother = activeRecordingIndex !== null && activeRecordingIndex !== currentQuestionIndex;
+  
   return (
-    <div className="flex items-center justify-center min-h-screen bg-secondary py-12">
-      <Card className="w-full max-w-2xl mx-4">
-        <CardHeader>
-          <CardTitle className="text-2xl">{title || 'Voice Feedback Form'}</CardTitle>
-          <CardDescription>
-            Record a voice response for each question below.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-8">
-          {questions.map((q, index) => {
-            const state = questionStates[index];
-            if (!state) return null;
-
-            const isRecordingThis = state.isRecording;
-            const isRecordingAnother = activeRecordingIndex !== null && activeRecordingIndex !== index;
-            
-            return (
-              <div key={index} className="p-4 border rounded-lg">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="font-semibold">{index + 1}. {q}</p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handlePlayQuestion(index)}
-                    disabled={state.isGeneratingAudio}
-                  >
-                    {state.isGeneratingAudio ? <Loader2 className="h-5 w-5 animate-spin" /> : (state.isPlayingAudio ? <Volume2 className="h-5 w-5" /> : <Play className="h-5 w-5" />) }
-                  </Button>
-                </div>
-
-                <div className="flex flex-col items-center gap-4">
-                   <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => isRecordingThis ? stopRecording(index) : startRecording(index)}
-                      disabled={isRecordingAnother || state.isSubmitted}
-                      className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                        isRecordingThis ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
-                      }`}
-                    >
-                      {isRecordingThis ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
-                    </button>
-                    <canvas 
-                        ref={el => canvasRefs.current[index] = el}
-                        width="200"
-                        height="80"
-                        className="rounded-md bg-secondary"
-                    ></canvas>
-                   </div>
-                   <p className="text-sm text-muted-foreground h-5">
-                    {isRecordingThis ? 'Recording...' : (state.audioChunks.length > 0 && !state.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
-                  </p>
-                  
-                  {state.isSubmitted ? (
-                    <div className="flex items-center gap-2 text-green-600">
-                        <CheckCircle className="h-4 w-4" />
-                        <span>Submitted</span>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-secondary py-12 px-4">
+        <Card className="w-full max-w-2xl mx-auto mb-4">
+            <CardHeader>
+                <CardTitle className="text-2xl">{title || 'Voice Feedback Form'}</CardTitle>
+                <CardDescription>
+                Please provide your voice feedback for the question below.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Progress value={progressPercentage} className="mb-8" />
+                <div className="text-center">
+                    <div className="flex items-center justify-center mb-4 min-h-[6rem]">
+                        <p className="text-2xl font-semibold text-center">{currentQuestionText}</p>
                     </div>
-                  ) : (
-                    <Button 
-                      size="sm"
-                      onClick={() => handleSubmit(index)} 
-                      disabled={state.isTranscribing || state.audioChunks.length === 0 || isRecordingThis || isRecordingAnother}
-                    >
-                      {state.isTranscribing ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Submitting...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="mr-2 h-4 w-4" />
-                          Submit Answer
-                        </>
-                      )}
+
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="flex items-center gap-4">
+                            <button
+                                onClick={() => isRecordingThis ? stopRecording(currentQuestionIndex) : startRecording(currentQuestionIndex)}
+                                disabled={isRecordingAnother || currentQuestionState.isSubmitted}
+                                className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isRecordingThis ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+                                }`}
+                            >
+                                {isRecordingThis ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
+                            </button>
+                            <canvas 
+                                ref={el => canvasRefs.current[currentQuestionIndex] = el}
+                                width="200"
+                                height="80"
+                                className="rounded-md bg-secondary"
+                            ></canvas>
+                        </div>
+                        <p className="text-sm text-muted-foreground h-5">
+                            {isRecordingThis ? 'Recording...' : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
+                        </p>
+                    
+                        {currentQuestionState.isSubmitted ? (
+                            <div className="flex items-center gap-2 text-green-600">
+                                <CheckCircle className="h-4 w-4" />
+                                <span>Submitted</span>
+                            </div>
+                        ) : (
+                            <Button 
+                            size="sm"
+                            onClick={() => handleSubmit(currentQuestionIndex)} 
+                            disabled={currentQuestionState.isTranscribing || currentQuestionState.audioChunks.length === 0 || isRecordingThis || isRecordingAnother}
+                            >
+                            {currentQuestionState.isTranscribing ? (
+                                <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Submitting...
+                                </>
+                            ) : (
+                                <>
+                                <Send className="mr-2 h-4 w-4" />
+                                Submit Answer
+                                </>
+                            )}
+                            </Button>
+                        )}
+                    </div>
+                    {currentQuestionState.transcription && (
+                        <div className="mt-4 p-3 bg-secondary rounded-md">
+                            <p className="text-sm font-medium">Your transcribed answer:</p>
+                            <p className="text-sm text-muted-foreground italic">"{currentQuestionState.transcription}"</p>
+                        </div>
+                    )}
+                </div>
+            </CardContent>
+        </Card>
+
+        <div className="w-full max-w-2xl mx-auto flex justify-between items-center">
+             <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handlePlayQuestion(currentQuestionIndex)}
+                disabled={currentQuestionState.isGeneratingAudio}
+                title="Play question audio"
+              >
+                {currentQuestionState.isGeneratingAudio ? <Loader2 className="h-5 w-5 animate-spin" /> : (currentQuestionState.isPlayingAudio ? <Volume2 className="h-5 w-5" /> : <Play className="h-5 w-5" />) }
+              </Button>
+            <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setCurrentQuestionIndex(prev => prev - 1)} disabled={currentQuestionIndex === 0}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Previous
+                </Button>
+                {currentQuestionIndex < questions.length - 1 ? (
+                    <Button onClick={() => setCurrentQuestionIndex(prev => prev + 1)}>
+                        Next
+                        <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
-                  )}
-                </div>
-                {state.transcription && (
-                    <div className="mt-4 p-3 bg-secondary rounded-md">
-                        <p className="text-sm font-medium">Your transcribed answer:</p>
-                        <p className="text-sm text-muted-foreground italic">"{state.transcription}"</p>
-                    </div>
+                ) : (
+                    <Button onClick={() => window.history.back()}>
+                        Finish
+                        <CheckCircle className="ml-2 h-4 w-4" />
+                    </Button>
                 )}
-              </div>
-            )
-          })}
-           <div className="text-center pt-4">
-                <Button variant="outline" onClick={() => window.history.back()}>Go Back</Button>
-           </div>
-        </CardContent>
-      </Card>
+            </div>
+        </div>
     </div>
   );
-}
