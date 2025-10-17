@@ -1,30 +1,55 @@
 'use client';
 
+import { useState } from 'react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useRouter } from 'next/navigation';
+import { PlusCircle, Trash2 } from 'lucide-react';
+
+type Question = {
+  id: number;
+  value: string;
+};
 
 export default function NewFormPage() {
   const router = useRouter();
+  const [questions, setQuestions] = useState<Question[]>([
+    { id: Date.now(), value: '' }
+  ]);
+
+  const addQuestion = () => {
+    setQuestions(prev => [...prev, { id: Date.now(), value: '' }]);
+  };
+
+  const removeQuestion = (id: number) => {
+    setQuestions(prev => prev.filter(q => q.id !== id));
+  };
+
+  const handleQuestionChange = (id: number, value: string) => {
+    setQuestions(prev => prev.map(q => (q.id === id ? { ...q, value } : q)));
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const title = formData.get('title') as string;
-    const question = formData.get('question') as string;
+    const formQuestions = questions.map(q => q.value).filter(Boolean);
 
     // In a real app, you'd save this to a database.
     // For now, we'll simulate it and redirect.
-    console.log({ title, question });
+    console.log({ title, questions: formQuestions });
     
     // Simulate saving and getting an ID
     const newFormId = '123'; 
 
-    router.push(`/forms/record/${newFormId}?title=${encodeURIComponent(title)}&question=${encodeURIComponent(question)}`);
+    const searchParams = new URLSearchParams();
+    searchParams.set('title', title);
+    formQuestions.forEach(q => searchParams.append('question', q));
+
+    router.push(`/forms/record/${newFormId}?${searchParams.toString()}`);
   };
 
   return (
@@ -40,6 +65,7 @@ export default function NewFormPage() {
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>Form Builder</CardTitle>
+            <CardDescription>Add a title and one or more questions for your voice feedback form.</CardDescription>
           </CardHeader>
           <CardContent>
             <form id="new-form-builder" className="space-y-6" onSubmit={handleSubmit}>
@@ -47,15 +73,36 @@ export default function NewFormPage() {
                 <Label htmlFor="title">Form Title</Label>
                 <Input id="title" name="title" placeholder="e.g., Customer Feedback Survey" required />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="question">Your Question</Label>
-                <Textarea
-                  id="question"
-                  name="question"
-                  placeholder="e.g., What could we do to improve your experience?"
-                  required
-                />
+              
+              <div className="space-y-4">
+                <Label>Questions</Label>
+                {questions.map((question, index) => (
+                  <div key={question.id} className="flex items-center gap-2">
+                    <Input
+                      name={`question-${question.id}`}
+                      placeholder={`e.g., What could we do to improve your experience?`}
+                      value={question.value}
+                      onChange={(e) => handleQuestionChange(question.id, e.target.value)}
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeQuestion(question.id)}
+                      disabled={questions.length <= 1}
+                      aria-label="Remove question"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
+
+              <Button type="button" variant="outline" onClick={addQuestion}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Question
+              </Button>
             </form>
           </CardContent>
         </Card>

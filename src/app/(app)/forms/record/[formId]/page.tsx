@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 export default function RecordFormPage({ params }: { params: { formId: string } }) {
   const searchParams = useSearchParams();
   const title = searchParams.get('title');
-  const question = searchParams.get('question');
+  const questions = searchParams.getAll('question');
   
   const { toast } = useToast();
   const [isRecording, setIsRecording] = useState(false);
@@ -95,7 +95,13 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       <Card className="w-full max-w-lg mx-4">
         <CardHeader>
           <CardTitle className="text-2xl">{title || 'Voice Feedback Form'}</CardTitle>
-          <CardDescription>{question || 'Please provide your feedback.'}</CardDescription>
+          <CardDescription>
+            {questions.length > 0 ? (
+                <ul className="list-disc pl-5 mt-2 space-y-1">
+                    {questions.map((q, i) => <li key={i}>{q}</li>)}
+                </ul>
+            ) : 'Please provide your feedback.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           <div className="flex flex-col items-center gap-6">
