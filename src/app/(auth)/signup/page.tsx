@@ -5,10 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/logo";
-import { useAuth, useUser } from "@/firebase";
+import { useAuth, useFirestore, useUser } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
 import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
@@ -16,6 +17,7 @@ import { FormEvent, useEffect, useState } from "react";
 export default function SignupPage() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -31,11 +33,24 @@ export default function SignupPage() {
 
   const handleSignUp = async (e: FormEvent) => {
     e.preventDefault();
+    if (!firestore) return;
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      if (userCredential.user) {
-        await updateProfile(userCredential.user, { displayName });
+      const newUser = userCredential.user;
+      
+      if (newUser) {
+        await updateProfile(newUser, { displayName });
+
+        // Create a user document in Firestore
+        await setDoc(doc(firestore, "users", newUser.uid), {
+          displayName,
+          email,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       }
+
       toast({
         title: "Account Created!",
         description: "You have been successfully signed up.",
@@ -60,9 +75,20 @@ export default function SignupPage() {
   };
 
   const handleGoogleSignIn = async () => {
+    if (!firestore) return;
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const newUser = result.user;
+
+      // Create a user document in Firestore for new Google sign-ins
+      await setDoc(doc(firestore, "users", newUser.uid), {
+        displayName: newUser.displayName,
+        email: newUser.email,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true }); // Use merge to avoid overwriting if doc already exists
+
       router.push('/dashboard');
     } catch (error) {
       console.error("Google sign in error", error);

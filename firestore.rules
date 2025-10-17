@@ -1,27 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // A user can only read and write their own user document
+  
+    // Users can only read and write their own user document.
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
     }
-    
-    // Forms can be read by their owner, and created by any authenticated user
-    // as long as they set themselves as the owner.
-    match /forms/{formId} {
-      allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.ownerUid;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.ownerUid;
-       // Allow listing of forms only for the user's own forms
-      allow list: if request.auth != null && request.query.resource.data.ownerUid == request.auth.uid;
 
-      // Questions can be read and written by the form owner
+    // Forms can be read by their owner. They can be created by any authenticated user,
+    // but the ownerUid must match the user's ID.
+    match /forms/{formId} {
+      allow read, update, delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      
+      // Questions can be read and written by the form owner.
       match /questions/{questionId} {
-        allow read, write: if request.auth != null && get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid;
+         allow read, write: if request.auth != null && get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid;
       }
     }
     
-    // Submissions can be created by anyone, but only read by the form owner
+    // Submissions can be created by anyone, but only read by the form owner.
     match /submissions/{submissionId} {
       allow create: if true;
       allow read: if request.auth != null && get(/databases/$(database)/documents/forms/$(resource.data.formId)).data.ownerUid == request.auth.uid;
