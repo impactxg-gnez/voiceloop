@@ -15,8 +15,10 @@ type QuestionState = {
   audioChunks: Blob[];
   transcription?: string;
   analyser?: AnalyserNode;
-  animationFrameId?: number;
 };
+
+// Add a ref for animation frame IDs to decouple from react state
+const animationFrameIds: Record<number, number> = {};
 
 export default function RecordFormPage({ params }: { params: { formId: string } }) {
   const searchParams = useSearchParams();
@@ -91,8 +93,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   useEffect(() => {
     setupMediaRecorder();
     
-    // Cleanup audio context on component unmount
     return () => {
+      Object.values(animationFrameIds).forEach(cancelAnimationFrame);
       if (audioStreamSourceRef.current) {
         audioStreamSourceRef.current.disconnect();
         audioStreamSourceRef.current = null;
@@ -104,49 +106,45 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     };
   }, []);
 
-  const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement) => {
+  const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
     const canvasCtx = canvas.getContext('2d');
     if (!canvasCtx) return;
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteTimeDomainData(dataArray);
-
-    canvasCtx.fillStyle = 'hsl(var(--secondary))';
-    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-    canvasCtx.lineWidth = 2;
-    canvasCtx.strokeStyle = 'hsl(var(--primary))';
-    canvasCtx.beginPath();
-
-    const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
-    let x = 0;
-
-    for (let i = 0; i < analyser.frequencyBinCount; i++) {
-        const v = dataArray[i] / 128.0;
-        const y = v * canvas.height / 2;
-
-        if (i === 0) {
-            canvasCtx.moveTo(x, y);
-        } else {
-            canvasCtx.lineTo(x, y);
-        }
-        x += sliceWidth;
-    }
-
-    canvasCtx.lineTo(canvas.width, canvas.height / 2);
-    canvasCtx.stroke();
     
-    const animationFrameId = requestAnimationFrame(() => draw(analyser, canvas));
-    
-    setQuestionStates(prev => {
-        const index = Object.keys(prev).find(key => prev[Number(key)].analyser === analyser);
-        if (index !== undefined && prev[Number(index)].isRecording) {
-            return { ...prev, [Number(index)]: { ...prev[Number(index)], animationFrameId }};
+    const drawFrame = () => {
+        analyser.getByteTimeDomainData(dataArray);
+
+        canvasCtx.fillStyle = 'hsl(var(--secondary))';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+        canvasCtx.lineWidth = 2;
+        canvasCtx.strokeStyle = 'hsl(var(--primary))';
+        canvasCtx.beginPath();
+
+        const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
+        let x = 0;
+
+        for (let i = 0; i < analyser.frequencyBinCount; i++) {
+            const v = dataArray[i] / 128.0;
+            const y = v * canvas.height / 2;
+
+            if (i === 0) {
+                canvasCtx.moveTo(x, y);
+            } else {
+                canvasCtx.lineTo(x, y);
+            }
+            x += sliceWidth;
         }
-        // If not found or not recording, cancel animation
-        cancelAnimationFrame(animationFrameId);
-        return prev;
-    });
+
+        canvasCtx.lineTo(canvas.width, canvas.height / 2);
+        canvasCtx.stroke();
+        
+        animationFrameIds[questionIndex] = requestAnimationFrame(drawFrame);
+    };
+    
+    drawFrame();
   };
+
 
   const startRecording = (questionIndex: number) => {
     if (mediaRecorder && activeRecordingIndex === null && audioContextRef.current && audioStreamSourceRef.current) {
@@ -172,7 +170,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         }));
 
         if (canvas) {
-          draw(analyser, canvas);
+          draw(analyser, canvas, questionIndex);
         }
 
         mediaRecorder.start();
@@ -196,13 +194,14 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       if (state.analyser && audioStreamSourceRef.current) {
         audioStreamSourceRef.current.disconnect(state.analyser);
       }
-      if (state.animationFrameId) {
-        cancelAnimationFrame(state.animationFrameId);
+      if (animationFrameIds[questionIndex]) {
+        cancelAnimationFrame(animationFrameIds[questionIndex]);
+        delete animationFrameIds[questionIndex];
       }
 
       setQuestionStates(prev => ({
         ...prev,
-        [questionIndex]: { ...prev[questionIndex], isRecording: false, analyser: undefined, animationFrameId: undefined }
+        [questionIndex]: { ...prev[questionIndex], isRecording: false, analyser: undefined }
       }));
       setActiveRecordingIndex(null);
 
