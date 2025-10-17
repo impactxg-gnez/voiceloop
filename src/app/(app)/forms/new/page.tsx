@@ -5,11 +5,11 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/componentsui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useRouter } from 'next/navigation';
 import { PlusCircle, Trash2, Loader2 } from 'lucide-react';
 import { useFirestore, useUser } from '@/firebase';
-import { collection, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 
 type Question = {
@@ -73,10 +73,10 @@ export default function NewFormPage() {
 
       // Batch write questions
       const batch = writeBatch(firestore);
-      const questionsCollection = collection(firestore, 'forms', formRef.id, 'questions');
       
       formQuestions.forEach((questionText, index) => {
-        batch.set(addDoc(questionsCollection).id, {
+        const questionRef = doc(collection(firestore, 'forms', formRef.id, 'questions'));
+        batch.set(questionRef, {
           text: questionText,
           order: index,
         });
