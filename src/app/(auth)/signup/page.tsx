@@ -39,17 +39,16 @@ export default function SignupPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const newUser = userCredential.user;
       
-      if (newUser) {
-        await updateProfile(newUser, { displayName });
+      await updateProfile(newUser, { displayName });
 
-        // Create a user document in Firestore
-        await setDoc(doc(firestore, "users", newUser.uid), {
-          displayName,
-          email,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
+      // Create a user document in Firestore
+      await setDoc(doc(firestore, "users", newUser.uid), {
+        uid: newUser.uid,
+        displayName,
+        email,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
 
       toast({
         title: "Account Created!",
@@ -81,8 +80,9 @@ export default function SignupPage() {
       const result = await signInWithPopup(auth, provider);
       const newUser = result.user;
 
-      // Create a user document in Firestore for new Google sign-ins
+      // Create a user document in Firestore for new Google sign-ins, merging to avoid overwrites
       await setDoc(doc(firestore, "users", newUser.uid), {
+        uid: newUser.uid,
         displayName: newUser.displayName,
         email: newUser.email,
         createdAt: serverTimestamp(),
