@@ -48,7 +48,7 @@ export default function NewFormPage() {
 
     setIsSubmitting(true);
 
-    const formQuestions = questions.map(q => q.value).filter(Boolean);
+    const formQuestions = questions.map(q => q.value).filter(q => q.trim() !== '');
     
     if (!formTitle.trim()) {
       toast({ variant: 'destructive', title: 'Form title is required.' });
@@ -62,18 +62,22 @@ export default function NewFormPage() {
     }
 
     try {
-      // Create form document
-      const formRef = await addDoc(collection(firestore, 'forms'), {
+      // Create a reference for the new form document
+      const formRef = doc(collection(firestore, 'forms'));
+
+      // Batch write the form and its questions
+      const batch = writeBatch(firestore);
+      
+      // Set the main form document
+      batch.set(formRef, {
         title: formTitle,
         ownerUid: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         questionCount: formQuestions.length,
       });
-
-      // Batch write questions
-      const batch = writeBatch(firestore);
       
+      // Set the questions in the subcollection
       formQuestions.forEach((questionText, index) => {
         const questionRef = doc(collection(firestore, 'forms', formRef.id, 'questions'));
         batch.set(questionRef, {
@@ -94,7 +98,8 @@ export default function NewFormPage() {
         title: 'Error',
         description: 'Could not create the form. Please try again.',
       });
-      setIsSubmitting(false);
+    } finally {
+        setIsSubmitting(false);
     }
   };
 

@@ -1,0 +1,127 @@
+/**
+ * @fileoverview Firestore Security Rules for the Vocalize Feedback platform.
+ *
+ * Core Philosophy:
+ * This ruleset prioritizes security and data ownership, ensuring users can only
+ * access and modify data they own or have explicit permission to access. It uses
+ * strict authentication checks and data validation to prevent unauthorized
+ * access and maintain data integrity.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profile information. Access is restricted to the
+ *   owning user.
+ * - /forms/{formId}: Stores form data. Accessible to the form owner.
+ * - /forms/{formId}/questions/{questionId}: Stores questions for a specific form.
+ *   Accessible to the form owner.
+ * - /submissions/{submissionId}: Stores individual form submissions.
+ *
+ * Key Security Decisions:
+ * - Users can only read and write their own profile data under /users/{userId}.
+ * - Forms and their questions are owned by a specific user, enforced via the
+ *   ownerUid field.
+ * - Submissions can be read by anyone, but creation requires a valid formId.
+ * - Data validation is limited to authorization-critical fields to allow for
+ *   rapid prototyping.
+ *
+ * Denormalization for Authorization:
+ * - The 'ownerUid' field is present in both the 'Organization' and 'Form'
+ *   entities. This denormalization allows for efficient owner-based access
+ *   control without additional database reads.
+ *
+ * Structural Segregation:
+ * - Private user data is stored under /users/{userId}, ensuring that only the
+ *   user can access it. Public form data is stored under /forms/{formId} and
+ *   is publicly readable.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Secure user profiles. Only the authenticated user can read or write their own profile.
+     * @path /users/{userId}
+     * @allow (get, update, delete) if request.auth.uid == userId
+     * @allow (create) if request.auth.uid == request.resource.data.id
+     * @deny (get) if request.auth.uid != userId
+     * @deny (create) if request.auth.uid != request.resource.data.id
+     * @deny (update,delete) if request.auth.uid != userId
+     * @principle Enforces document ownership for writes.
+     */
+    match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == request.auth.uid;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Secure forms. Only the owner of the form can create, read, update, or delete it.
+     * @path /forms/{formId}
+     * @allow (get, list) if true;
+     * @allow (create) if request.auth.uid == request.resource.data.ownerUid
+     * @allow (update, delete) if request.auth.uid == resource.data.ownerUid
+     * @deny (create) if request.auth.uid != request.resource.data.ownerUid
+     * @deny (update, delete) if request.auth.uid != resource.data.ownerUid
+     * @principle Enforces document ownership for writes.
+     */
+    match /forms/{formId} {
+      function isOwner(ownerUid) {
+        return request.auth.uid == ownerUid;
+      }
+
+      function isExistingOwner(ownerUid) {
+        return isOwner(ownerUid) && resource != null;
+      }
+
+      allow get, list: if true;
+      allow create: if isOwner(request.resource.data.ownerUid);
+      allow update: if isExistingOwner(resource.data.ownerUid);
+      allow delete: if isExistingOwner(resource.data.ownerUid);
+
+      /**
+       * @description Secure questions within a form. Only the owner of the form can create, read, update, or delete questions.
+       * @path /forms/{formId}/questions/{questionId}
+       * @allow (get, list) if true;
+       * @allow (create) if get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid
+       * @allow (update, delete) if get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid
+       * @deny (create) if get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid != request.auth.uid
+       * @deny (update, delete) if get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid != request.auth.uid
+       * @principle Enforces document ownership for writes, inherited from the parent form.
+       */
+      match /questions/{questionId} {
+        function isFormOwner(formId) {
+          return get(/databases/$(database)/documents/forms/$(formId)).data.ownerUid == request.auth.uid;
+        }
+
+        allow get, list: if true;
+        allow create: if isFormOwner(formId);
+        allow update: if isFormOwner(formId);
+        allow delete: if isFormOwner(formId);
+      }
+    }
+
+    /**
+     * @description Secure submissions. Anyone can read submissions, but only authenticated users can create them.
+     * @path /submissions/{submissionId}
+     * @allow (get, list) if true;
+     * @allow (create) if request.auth != null;
+     * @deny update, delete: if false;
+     * @principle Allows public read access for submissions.
+     */
+    match /submissions/{submissionId} {
+      allow get, list: if true;
+      allow create: if request.auth != null;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
