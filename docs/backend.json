@@ -1,0 +1,259 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the Vocalize Feedback platform, primarily Makers who create forms.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user entity."
+        },
+        "orgId": {
+          "type": "string",
+          "description": "Reference to the Organization this user belongs to. (Relationship: Organization 1:N User)"
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user account was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user account was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "orgId",
+        "email",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Organization": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Organization",
+      "type": "object",
+      "description": "Represents an organization or team using the Vocalize Feedback platform. Makers belong to an organization.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the organization entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the organization."
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Reference to the User who owns the organization. (Relationship: User 1:N Organization)"
+        },
+        "plan": {
+          "type": "string",
+          "description": "The subscription plan of the organization (e.g., 'free', 'basic', 'premium')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the organization was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the organization was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "ownerUid",
+        "plan",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "orgs/{orgId}",
+        "definition": {
+          "entityName": "Organization",
+          "schema": {
+            "$ref": "#/backend/entities/Organization"
+          },
+          "description": "Stores organization data. Organizations contain Makers and own Forms.",
+          "params": [
+            {
+              "name": "orgId",
+              "description": "Unique identifier for the organization."
+            }
+          ]
+        }
+      },
+      {
+        "path": "users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user data. Each user is associated with an organization.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "Unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "forms/{formId}",
+        "definition": {
+          "entityName": "forms",
+          "schema": {
+            "$ref": "#/backend/entities/forms"
+          },
+          "description": "Stores form data. Includes denormalized 'orgId' for authorization independence.",
+          "params": [
+            {
+              "name": "formId",
+              "description": "Unique identifier for the form."
+            }
+          ]
+        }
+      },
+      {
+        "path": "forms/{formId}/questions/{questionId}",
+        "definition": {
+          "entityName": "questions",
+          "schema": {
+            "$ref": "#/backend/entities/questions"
+          },
+          "description": "Stores questions associated with a specific form.",
+          "params": [
+            {
+              "name": "formId",
+              "description": "Unique identifier for the form."
+            },
+            {
+              "name": "questionId",
+              "description": "Unique identifier for the question."
+            }
+          ]
+        }
+      },
+      {
+        "path": "submissions/{submissionId}",
+        "definition": {
+          "entityName": "submissions",
+          "schema": {
+            "$ref": "#/backend/entities/submissions"
+          },
+          "description": "Stores form submission data. Includes denormalized 'formOrgId' for authorization independence.",
+          "params": [
+            {
+              "name": "submissionId",
+              "description": "Unique identifier for the submission."
+            }
+          ]
+        }
+      },
+      {
+        "path": "submissions/{submissionId}/answers/{answerId}",
+        "definition": {
+          "entityName": "answers",
+          "schema": {
+            "$ref": "#/backend/entities/answers"
+          },
+          "description": "Stores answers associated with a specific submission.",
+          "params": [
+            {
+              "name": "submissionId",
+              "description": "Unique identifier for the submission."
+            },
+            {
+              "name": "answerId",
+              "description": "Unique identifier for the answer."
+            }
+          ]
+        }
+      },
+      {
+        "path": "forms/{formId}/metrics_daily/{dateId}",
+        "definition": {
+          "entityName": "metrics_daily",
+          "schema": {
+            "$ref": "#/backend/entities/metrics_daily"
+          },
+          "description": "Stores daily metrics associated with a specific form.",
+          "params": [
+            {
+              "name": "formId",
+              "description": "Unique identifier for the form."
+            },
+            {
+              "name": "dateId",
+              "description": "Unique identifier for the date (e.g., YYYY-MM-DD)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "forms/{formId}/themes/{themeId}",
+        "definition": {
+          "entityName": "themes",
+          "schema": {
+            "$ref": "#/backend/entities/themes"
+          },
+          "description": "Stores themes associated with a specific form.",
+          "params": [
+            {
+              "name": "formId",
+              "description": "Unique identifier for the form."
+            },
+            {
+              "name": "themeId",
+              "description": "Unique identifier for the theme."
+            }
+          ]
+        }
+      },
+      {
+        "path": "events/{eventId}",
+        "definition": {
+          "entityName": "events",
+          "schema": {
+            "$ref": "#/backend/entities/events"
+          },
+          "description": "Stores append-only event logs.",
+          "params": [
+            {
+              "name": "eventId",
+              "description": "Unique identifier for the event."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to support the Vocalize Feedback platform, emphasizing security, scalability, and maintainability. It incorporates denormalization to ensure authorization independence and supports secure list operations (QAPs). The structure follows a hierarchical pattern for user-owned data and employs membership maps for collaborative data access, aligning with the core design principles. All data relating to forms, submissions and associated analytics is segregated by organization to facilitate security rules that limit access based on organization membership.\n\nAuthorization Independence is achieved by denormalizing the 'orgId' from the 'orgs' collection into the 'forms' collection. Similarly, 'formOrgId' is copied from 'forms' to 'submissions'. This allows security rules to validate access without needing to perform expensive `get()` operations to check the parent organization. For example the submissions collection includes the 'formOrgId' enabling rules to check organization membership without reading the parent 'form' document.\n\nQAPs are supported by segregating data based on ownership and access requirements. Publicly accessible forms do not exist in this model, instead, all forms are owned by an organization, simplifying list operations as all forms in the collection require organization membership validation."
+  }
+}
