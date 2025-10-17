@@ -55,19 +55,26 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         const recorder = new MediaRecorder(stream);
         recorder.ondataavailable = (event) => {
             if (activeRecordingIndex !== null) {
-              setQuestionStates(prev => ({
-                ...prev,
-                [activeRecordingIndex]: {
-                  ...prev[activeRecordingIndex],
-                  audioChunks: [...prev[activeRecordingIndex].audioChunks, event.data],
-                },
-              }));
+              setQuestionStates(prev => {
+                const currentQuestionState = prev[activeRecordingIndex!];
+                if (!currentQuestionState) return prev;
+                return {
+                  ...prev,
+                  [activeRecordingIndex!]: {
+                    ...currentQuestionState,
+                    audioChunks: [...currentQuestionState.audioChunks, event.data],
+                  },
+                }
+              });
             }
         };
         setMediaRecorder(recorder);
 
-        if (audioContextRef.current && !audioStreamSourceRef.current) {
-          audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
+        if (audioContextRef.current && stream.getAudioTracks().length > 0) {
+            if (audioStreamSourceRef.current) {
+                audioStreamSourceRef.current.disconnect();
+            }
+            audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
         }
 
       } catch (err) {
@@ -129,11 +136,14 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     canvasCtx.stroke();
     
     const animationFrameId = requestAnimationFrame(() => draw(analyser, canvas));
+    
     setQuestionStates(prev => {
-        const index = Object.values(prev).findIndex(s => s.analyser === analyser);
-        if (index > -1 && prev[index].isRecording) {
-            return { ...prev, [index]: { ...prev[index], animationFrameId }};
+        const index = Object.keys(prev).find(key => prev[Number(key)].analyser === analyser);
+        if (index !== undefined && prev[Number(index)].isRecording) {
+            return { ...prev, [Number(index)]: { ...prev[Number(index)], animationFrameId }};
         }
+        // If not found or not recording, cancel animation
+        cancelAnimationFrame(animationFrameId);
         return prev;
     });
   };
@@ -174,8 +184,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
             description: "Please stop the current recording before starting a new one.",
         });
     } else if (!mediaRecorder) {
-        setupMediaRecorder(); // Try to set it up again if it failed initially
-        toast({ title: 'Preparing recorder, please try again.' });
+        setupMediaRecorder().then(() => toast({ title: 'Preparing recorder, please try again.' }));
     }
   };
 
@@ -291,8 +300,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         className="rounded-md bg-secondary"
                     ></canvas>
                    </div>
-                   <p className="text-sm text-muted-foreground">
-                    {isRecordingThis ? 'Recording...' : (state.audioChunks.length > 0 ? 'Recording complete.' : 'Click to record.')}
+                   <p className="text-sm text-muted-foreground h-5">
+                    {isRecordingThis ? 'Recording...' : (state.audioChunks.length > 0 && !state.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
                   </p>
                   
                   {state.isSubmitted ? (
