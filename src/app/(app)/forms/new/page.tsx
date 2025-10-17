@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useRouter } from 'next/navigation';
 import { PlusCircle, Trash2 } from 'lucide-react';
+import { useUser } from '@/firebase';
 
 type Question = {
   id: number;
@@ -16,6 +17,7 @@ type Question = {
 
 export default function NewFormPage() {
   const router = useRouter();
+  const { user, isUserLoading } = useUser();
   const [questions, setQuestions] = useState<Question[]>([
     { id: Date.now(), value: '' }
   ]);
@@ -51,6 +53,15 @@ export default function NewFormPage() {
 
     router.push(`/forms/record/${newFormId}?${searchParams.toString()}`);
   };
+
+  if (isUserLoading) {
+    return <div>Loading...</div>
+  }
+
+  if (!user) {
+    router.push('/login');
+    return null;
+  }
 
   return (
     <div className="flex flex-col h-full">
