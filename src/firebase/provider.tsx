@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
@@ -12,6 +13,14 @@ interface FirebaseProviderProps {
   firestore: Firestore;
   auth: Auth;
 }
+
+// MOCK USER for bypassing login
+const MOCK_USER = {
+  uid: 'mock-user-id',
+  email: 'test@example.com',
+  displayName: 'Test User',
+  photoURL: null,
+};
 
 // Internal state for user authentication
 interface UserAuthState {
@@ -44,7 +53,7 @@ export interface FirebaseServicesAndUser {
 
 // Return type for useUser() - specific to user auth state
 export interface UserHookResult { // Renamed from UserAuthHookResult for consistency if desired, or keep as UserAuthHookResult
-  user: User | null;
+  user: any | null; // Using any to allow for mock user
   isUserLoading: boolean;
   userError: Error | null;
 }
@@ -69,6 +78,12 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
 
   // Effect to subscribe to Firebase auth state changes
   useEffect(() => {
+    // In mock mode, we just set the mock user and stop loading.
+    if (process.env.NEXT_PUBLIC_MOCK_AUTH === 'true') {
+      setUserAuthState({ user: MOCK_USER as any, isUserLoading: false, userError: null });
+      return;
+    }
+
     if (!auth) { // If no Auth service instance, cannot determine user state
       setUserAuthState({ user: null, isUserLoading: false, userError: new Error("Auth service not provided.") });
       return;
@@ -92,13 +107,17 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   // Memoize the context value
   const contextValue = useMemo((): FirebaseContextState => {
     const servicesAvailable = !!(firebaseApp && firestore && auth);
+    // Use mock user if the environment variable is set
+    const activeUser = process.env.NEXT_PUBLIC_MOCK_AUTH === 'true' ? MOCK_USER as any : userAuthState.user;
+    const isLoading = process.env.NEXT_PUBLIC_MOCK_AUTH === 'true' ? false : userAuthState.isUserLoading;
+
     return {
       areServicesAvailable: servicesAvailable,
       firebaseApp: servicesAvailable ? firebaseApp : null,
       firestore: servicesAvailable ? firestore : null,
       auth: servicesAvailable ? auth : null,
-      user: userAuthState.user,
-      isUserLoading: userAuthState.isUserLoading,
+      user: activeUser,
+      isUserLoading: isLoading,
       userError: userAuthState.userError,
     };
   }, [firebaseApp, firestore, auth, userAuthState]);
@@ -125,13 +144,17 @@ export const useFirebase = (): FirebaseServicesAndUser => {
   if (!context.areServicesAvailable || !context.firebaseApp || !context.firestore || !context.auth) {
     throw new Error('Firebase core services not available. Check FirebaseProvider props.');
   }
+  
+  const user = process.env.NEXT_PUBLIC_MOCK_AUTH === 'true' ? MOCK_USER as any : context.user;
+  const isUserLoading = process.env.NEXT_PUBLIC_MOCK_AUTH === 'true' ? false : context.isUserLoading;
+
 
   return {
     firebaseApp: context.firebaseApp,
     firestore: context.firestore,
     auth: context.auth,
-    user: context.user,
-    isUserLoading: context.isUserLoading,
+    user: user,
+    isUserLoading: isUserLoading,
     userError: context.userError,
   };
 };
@@ -171,6 +194,21 @@ export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T | 
  * @returns {UserHookResult} Object with user, isUserLoading, userError.
  */
 export const useUser = (): UserHookResult => { // Renamed from useAuthUser
+  const context = useContext(FirebaseContext);
+
+  if (context === undefined) {
+    throw new Error('useUser must be used within a FirebaseProvider.');
+  }
+
+  // If mock mode is enabled, return the mock user.
+  if (process.env.NEXT_PUBLIC_MOCK_AUTH === 'true') {
+    return {
+      user: MOCK_USER,
+      isUserLoading: false,
+      userError: null,
+    };
+  }
+  
   const { user, isUserLoading, userError } = useFirebase(); // Leverages the main hook
   return { user, isUserLoading, userError };
 };

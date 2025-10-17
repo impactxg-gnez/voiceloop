@@ -4,13 +4,20 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/logo";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset } from "@/components/ui/sidebar";
-import { useAuth, useUser } from "@/firebase";
+import { useAuth } from "@/firebase";
 import { Home, LineChart, LogOut, MessageSquare, Settings, User, FileText, CreditCard } from "lucide-react";
 import Link from "next/link";
 import React from "react";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { useRouter } from "next/navigation";
-import { Skeleton } from "@/components/ui/skeleton";
+
+// MOCK USER for bypassing login
+const MOCK_USER = {
+  uid: 'mock-user-id',
+  email: 'test@example.com',
+  displayName: 'Test User',
+  photoURL: null,
+};
 
 
 const navItems = [
@@ -26,41 +33,21 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const userAvatar = PlaceHolderImages.find(p => p.id === 'user-avatar');
-  const { user, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
 
+  // Use the mock user
+  const user = MOCK_USER;
+  const isUserLoading = false;
+
   const handleLogout = async () => {
-    await auth.signOut();
+    // In mock mode, just redirect to login
     router.push('/login');
   };
   
-  if (isUserLoading) {
-    return (
-      <div className="flex min-h-screen">
-        <div className="w-64 border-r p-4">
-          <div className="flex items-center gap-2 mb-8">
-            <Logo className="w-7 h-7 text-primary" />
-            <span className="font-bold text-xl">Vocalize</span>
-          </div>
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        </div>
-        <div className="flex-1 p-6">
-          <Skeleton className="h-full w-full" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    router.push('/login');
-    return null; // or a loading spinner
-  }
+  // The original authentication check is removed.
+  // if (isUserLoading) { ... }
+  // if (!user) { ... }
 
 
   return (
