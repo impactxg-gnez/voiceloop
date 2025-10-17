@@ -68,8 +68,8 @@ export function useCollection<T = any>(
       },
       (err: FirestoreError) => {
         let path = 'unknown';
-        if ('_query' in query && query._query.path) {
-            path = query._query.path.toString();
+        if ('_query' in query && (query as any)._query.path) {
+            path = (query as any)._query.path.toString();
         } else if ('path' in query) {
             path = (query as CollectionReference).path;
         }
