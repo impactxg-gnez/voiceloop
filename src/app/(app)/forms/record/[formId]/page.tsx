@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -100,6 +100,70 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     }
   };
 
+  const handlePlayQuestion = useCallback(async (questionIndex: number) => {
+    const state = questionStates[questionIndex];
+    const questionText = questions[questionIndex];
+    
+    // Do nothing if state isn't initialized yet
+    if (!state) return;
+
+    if (state.isPlayingAudio && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: false } }));
+      return;
+    }
+
+    // Stop any other audio that might be playing
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+      // Reset all other playing states
+      const newStates = { ...questionStates };
+      Object.keys(newStates).forEach(key => {
+        const index = parseInt(key);
+        if (index !== questionIndex) {
+            newStates[index] = { ...newStates[index], isPlayingAudio: false };
+        }
+      });
+      setQuestionStates(newStates);
+    }
+
+
+    if (state.audioUrl && audioRef.current) {
+        audioRef.current.src = state.audioUrl;
+        audioRef.current.play();
+        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: true } }));
+        return;
+    }
+
+    setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: true } }));
+
+    try {
+        const result = await generateQuestionAudio({ question: questionText });
+        if (audioRef.current) {
+            audioRef.current.src = result.audioUrl;
+            audioRef.current.play();
+        }
+        setQuestionStates(prev => ({
+            ...prev,
+            [questionIndex]: {
+                ...prev[questionIndex],
+                audioUrl: result.audioUrl,
+                isGeneratingAudio: false,
+                isPlayingAudio: true,
+            }
+        }));
+    } catch (error) {
+        console.error('Error generating audio:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Audio Generation Failed',
+            description: 'Could not generate audio for the question.',
+        });
+        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: false } }));
+    }
+  }, [questions, questionStates, toast]);
+
   useEffect(() => {
     setupMediaRecorder();
     audioRef.current = new Audio();
@@ -107,12 +171,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     const currentAudioRef = audioRef.current;
     const onEnded = () => {
       // Find which question is playing and update its state
-      for (const index in questionStates) {
-        if (questionStates[index].isPlayingAudio) {
-          setQuestionStates(prev => ({...prev, [index]: {...prev[index], isPlayingAudio: false}}));
-          break;
+      setQuestionStates(prevStates => {
+        const newStates = {...prevStates};
+        for (const index in newStates) {
+          if (newStates[index].isPlayingAudio) {
+            newStates[index] = { ...newStates[index], isPlayingAudio: false };
+          }
         }
-      }
+        return newStates;
+      });
     }
     
     currentAudioRef.addEventListener('ended', onEnded);
@@ -131,7 +198,17 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         currentAudioRef.removeEventListener('ended', onEnded);
       }
     };
-  }, []); // Changed dependency to empty array as questionStates is not needed here
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Auto-play the question audio when the question changes,
+    // but not on the initial load of the component.
+    if (Object.keys(questionStates).length > 0) {
+      handlePlayQuestion(currentQuestionIndex);
+    }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestionIndex, questionStates]);
 
   const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
     const canvasCtx = canvas.getContext('2d');
@@ -287,66 +364,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     };
   };
 
-  const handlePlayQuestion = async (questionIndex: number) => {
-    const state = questionStates[questionIndex];
-    const questionText = questions[questionIndex];
-    
-    if (state.isPlayingAudio && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: false } }));
-      return;
-    }
-
-    // Stop any other audio that might be playing
-    if (audioRef.current && !audioRef.current.paused) {
-      audioRef.current.pause();
-      // Reset all other playing states
-      const newStates = { ...questionStates };
-      Object.keys(newStates).forEach(key => {
-        const index = parseInt(key);
-        if (index !== questionIndex) {
-            newStates[index] = { ...newStates[index], isPlayingAudio: false };
-        }
-      });
-      setQuestionStates(newStates);
-    }
-
-
-    if (state.audioUrl && audioRef.current) {
-        audioRef.current.src = state.audioUrl;
-        audioRef.current.play();
-        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: true } }));
-        return;
-    }
-
-    setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: true } }));
-
-    try {
-        const result = await generateQuestionAudio({ question: questionText });
-        if (audioRef.current) {
-            audioRef.current.src = result.audioUrl;
-            audioRef.current.play();
-        }
-        setQuestionStates(prev => ({
-            ...prev,
-            [questionIndex]: {
-                ...prev[questionIndex],
-                audioUrl: result.audioUrl,
-                isGeneratingAudio: false,
-                isPlayingAudio: true,
-            }
-        }));
-    } catch (error) {
-        console.error('Error generating audio:', error);
-        toast({
-            variant: 'destructive',
-            title: 'Audio Generation Failed',
-            description: 'Could not generate audio for the question.',
-        });
-        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: false } }));
-    }
-  };
+  
 
   const currentQuestionText = questions[currentQuestionIndex];
   const currentQuestionState = questionStates[currentQuestionIndex];
@@ -466,3 +484,4 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         </div>
     </div>
   );
+}
