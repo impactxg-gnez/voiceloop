@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,8 @@ type QuestionState = {
   isSubmitted: boolean;
   audioChunks: Blob[];
   transcription?: string;
+  analyser?: AnalyserNode;
+  animationFrameId?: number;
 };
 
 export default function RecordFormPage({ params }: { params: { formId: string } }) {
@@ -25,6 +27,9 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [questionStates, setQuestionStates] = useState<Record<number, QuestionState>>({});
   const [activeRecordingIndex, setActiveRecordingIndex] = useState<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
 
   useEffect(() => {
     const initialStates: Record<number, QuestionState> = {};
@@ -37,14 +42,18 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       };
     });
     setQuestionStates(initialStates);
+
+    if (typeof window !== 'undefined' && !audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
   }, [questions.length]);
 
-  useEffect(() => {
+  const setupMediaRecorder = async () => {
     if (typeof window !== 'undefined' && 'MediaRecorder' in window) {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-          const recorder = new MediaRecorder(stream);
-          recorder.ondataavailable = (event) => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (event) => {
             if (activeRecordingIndex !== null) {
               setQuestionStates(prev => ({
                 ...prev,
@@ -54,49 +63,146 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                 },
               }));
             }
-          };
-          setMediaRecorder(recorder);
-        })
-        .catch(err => {
-          console.error('Error accessing microphone:', err);
-          toast({
-            variant: 'destructive',
-            title: 'Microphone Access Denied',
-            description: 'Please allow microphone access in your browser settings to record audio.',
-          });
+        };
+        setMediaRecorder(recorder);
+
+        if (audioContextRef.current && !audioStreamSourceRef.current) {
+          audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
+        }
+
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Microphone Access Denied',
+          description: 'Please allow microphone access in your browser settings to record audio.',
         });
+      }
     }
-  }, [activeRecordingIndex, toast]);
+  };
+
+  useEffect(() => {
+    setupMediaRecorder();
+    
+    // Cleanup audio context on component unmount
+    return () => {
+      if (audioStreamSourceRef.current) {
+        audioStreamSourceRef.current.disconnect();
+        audioStreamSourceRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+    };
+  }, []);
+
+  const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement) => {
+    const canvasCtx = canvas.getContext('2d');
+    if (!canvasCtx) return;
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(dataArray);
+
+    canvasCtx.fillStyle = 'hsl(var(--secondary))';
+    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+    canvasCtx.lineWidth = 2;
+    canvasCtx.strokeStyle = 'hsl(var(--primary))';
+    canvasCtx.beginPath();
+
+    const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
+    let x = 0;
+
+    for (let i = 0; i < analyser.frequencyBinCount; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = v * canvas.height / 2;
+
+        if (i === 0) {
+            canvasCtx.moveTo(x, y);
+        } else {
+            canvasCtx.lineTo(x, y);
+        }
+        x += sliceWidth;
+    }
+
+    canvasCtx.lineTo(canvas.width, canvas.height / 2);
+    canvasCtx.stroke();
+    
+    const animationFrameId = requestAnimationFrame(() => draw(analyser, canvas));
+    setQuestionStates(prev => {
+        const index = Object.values(prev).findIndex(s => s.analyser === analyser);
+        if (index > -1 && prev[index].isRecording) {
+            return { ...prev, [index]: { ...prev[index], animationFrameId }};
+        }
+        return prev;
+    });
+  };
 
   const startRecording = (questionIndex: number) => {
-    if (mediaRecorder && activeRecordingIndex === null) {
-      setActiveRecordingIndex(questionIndex);
-      setQuestionStates(prev => ({
-        ...prev,
-        [questionIndex]: {
-          ...prev[questionIndex],
-          isRecording: true,
-          audioChunks: [],
+    if (mediaRecorder && activeRecordingIndex === null && audioContextRef.current && audioStreamSourceRef.current) {
+        if (audioContextRef.current.state === 'suspended') {
+            audioContextRef.current.resume();
         }
-      }));
-      mediaRecorder.start();
+
+        const analyser = audioContextRef.current.createAnalyser();
+        analyser.fftSize = 2048;
+        audioStreamSourceRef.current.connect(analyser);
+
+        const canvas = canvasRefs.current[questionIndex];
+
+        setActiveRecordingIndex(questionIndex);
+        setQuestionStates(prev => ({
+            ...prev,
+            [questionIndex]: {
+                ...prev[questionIndex],
+                isRecording: true,
+                audioChunks: [],
+                analyser,
+            }
+        }));
+
+        if (canvas) {
+          draw(analyser, canvas);
+        }
+
+        mediaRecorder.start();
+
     } else if (activeRecordingIndex !== null) {
         toast({
             variant: "destructive",
             title: "Recording in Progress",
             description: "Please stop the current recording before starting a new one.",
         });
+    } else if (!mediaRecorder) {
+        setupMediaRecorder(); // Try to set it up again if it failed initially
+        toast({ title: 'Preparing recorder, please try again.' });
     }
   };
 
   const stopRecording = (questionIndex: number) => {
     if (mediaRecorder && activeRecordingIndex === questionIndex) {
       mediaRecorder.stop();
+
+      const state = questionStates[questionIndex];
+      if (state.analyser && audioStreamSourceRef.current) {
+        audioStreamSourceRef.current.disconnect(state.analyser);
+      }
+      if (state.animationFrameId) {
+        cancelAnimationFrame(state.animationFrameId);
+      }
+
       setQuestionStates(prev => ({
         ...prev,
-        [questionIndex]: { ...prev[questionIndex], isRecording: false }
+        [questionIndex]: { ...prev[questionIndex], isRecording: false, analyser: undefined, animationFrameId: undefined }
       }));
       setActiveRecordingIndex(null);
+
+      const canvas = canvasRefs.current[questionIndex];
+      const canvasCtx = canvas?.getContext('2d');
+      if (canvas && canvasCtx) {
+        canvasCtx.fillStyle = 'hsl(var(--secondary))';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      }
     }
   };
 
@@ -168,15 +274,23 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
               <div key={index} className="p-4 border rounded-lg">
                 <p className="font-semibold mb-4">{index + 1}. {q}</p>
                 <div className="flex flex-col items-center gap-4">
-                   <button
-                    onClick={() => isRecordingThis ? stopRecording(index) : startRecording(index)}
-                    disabled={isRecordingAnother || state.isSubmitted}
-                    className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isRecordingThis ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
-                    }`}
-                  >
-                    {isRecordingThis ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
-                  </button>
+                   <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => isRecordingThis ? stopRecording(index) : startRecording(index)}
+                      disabled={isRecordingAnother || state.isSubmitted}
+                      className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        isRecordingThis ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+                      }`}
+                    >
+                      {isRecordingThis ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
+                    </button>
+                    <canvas 
+                        ref={el => canvasRefs.current[index] = el}
+                        width="200"
+                        height="80"
+                        className="rounded-md bg-secondary"
+                    ></canvas>
+                   </div>
                    <p className="text-sm text-muted-foreground">
                     {isRecordingThis ? 'Recording...' : (state.audioChunks.length > 0 ? 'Recording complete.' : 'Click to record.')}
                   </p>
