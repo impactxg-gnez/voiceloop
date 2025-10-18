@@ -23,7 +23,8 @@ export default function LoginPage() {
   const [isSigningIn, setIsSigningIn] = useState(true);
   
   useEffect(() => {
-    if (user && !isUserLoading) {
+    // This effect will run when the user state is definitively known.
+    if (!isUserLoading && user) {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
@@ -33,7 +34,10 @@ export default function LoginPage() {
       getRedirectResult(auth)
         .then((result) => {
           if (result) {
-            router.push('/dashboard');
+            // This means the user has just been redirected from Google.
+            // The onAuthStateChanged listener will handle the user state update,
+            // and the effect above will trigger the redirect to the dashboard.
+            // No need to manually push here.
           }
         })
         .catch((error) => {
@@ -45,9 +49,11 @@ export default function LoginPage() {
           });
         })
         .finally(() => {
+            // We can now show the page content as the redirect check is complete.
             setIsSigningIn(false);
         });
     } else {
+        // If auth is not ready, we are still 'signing in' from the page's perspective
         setIsSigningIn(false);
     }
   }, [auth, router, toast]);
@@ -56,7 +62,7 @@ export default function LoginPage() {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.push('/dashboard');
+      // The onAuthStateChanged listener will pick this up and the useEffect will redirect.
     } catch (error) {
       console.error("Sign in error", error);
       if (error instanceof FirebaseError) {
@@ -78,6 +84,8 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
     try {
+      // Set the loading state right before redirecting
+      setIsSigningIn(true);
       await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Google sign in error", error);
@@ -94,11 +102,14 @@ export default function LoginPage() {
           description: "An unexpected error occurred.",
         });
       }
+      setIsSigningIn(false);
     }
   };
 
-  if (isUserLoading || user || isSigningIn) {
-    return <div>Loading...</div>; // Or a proper loader
+  // While checking for redirect result or if user is loading, show a loader.
+  // Don't show the page if the user is already logged in, as the redirect will happen.
+  if (isUserLoading || isSigningIn || user) {
+    return <div>Loading...</div>; 
   }
 
   return (

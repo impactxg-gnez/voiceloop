@@ -24,10 +24,11 @@ export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [isSigningIn, setIsSigningIn] = useState(true);
+  const [isSigningIn, setIsSigningIn] = useState(true); // Represents page loading/auth checking
 
   useEffect(() => {
-    if (user && !isUserLoading) {
+    // This effect will run when the user state is definitively known.
+    if (!isUserLoading && user) {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
@@ -37,6 +38,8 @@ export default function SignupPage() {
       getRedirectResult(auth)
         .then(async (result) => {
           if (result) {
+            // User just signed up via Google redirect.
+            // Create their user document in Firestore.
             const newUser = result.user;
             await setDoc(doc(firestore, "users", newUser.uid), {
               uid: newUser.uid,
@@ -45,7 +48,7 @@ export default function SignupPage() {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             }, { merge: true });
-            router.push('/dashboard');
+            // The onAuthStateChanged listener will handle the redirect to dashboard.
           }
         })
         .catch((error) => {
@@ -56,9 +59,11 @@ export default function SignupPage() {
             description: "Could not complete sign up with Google.",
           });
         }).finally(() => {
+            // Redirect check is done, we can show the page.
             setIsSigningIn(false);
         });
     } else {
+        // If auth/firestore aren't ready, we are still "signing in"
         setIsSigningIn(false);
     }
   }, [auth, firestore, router, toast]);
@@ -86,7 +91,7 @@ export default function SignupPage() {
         title: "Account Created!",
         description: "You have been successfully signed up.",
       });
-      router.push('/dashboard');
+      // The onAuthStateChanged listener will pick this up and the useEffect will redirect.
     } catch (error) {
       console.error("Sign up error", error);
       if (error instanceof FirebaseError) {
@@ -109,6 +114,7 @@ export default function SignupPage() {
     if (!firestore) return;
     const provider = new GoogleAuthProvider();
     try {
+      setIsSigningIn(true);
       await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Google sign in error", error);
@@ -125,11 +131,13 @@ export default function SignupPage() {
           description: "An unexpected error occurred.",
         });
       }
+      setIsSigningIn(false);
     }
   };
   
-  if (isUserLoading || user || isSigningIn) {
-    return <div>Loading...</div>; // Or a proper loader
+  // While checking for redirect result or if user is loading, show a loader.
+  if (isUserLoading || isSigningIn || user) {
+    return <div>Loading...</div>;
   }
 
   return (
