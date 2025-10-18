@@ -22,17 +22,18 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isProcessing, setIsProcessing] = useState(true);
-  
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
-    // Redirect if user is already logged in
+    // If we have a user, redirect to dashboard.
     if (!isUserLoading && user) {
       router.push('/dashboard');
-      return; // Stop further execution
+      return;
     }
 
-    // If auth is ready and there's no user, check for redirect result
-    if (!isUserLoading && !user && auth) {
+    // If auth is ready and user is not loaded yet, check for redirect result.
+    if (auth && !user) {
       getRedirectResult(auth)
         .catch((error) => {
           console.error("Google redirect sign in error", error);
@@ -43,21 +44,24 @@ export default function LoginPage() {
           });
         })
         .finally(() => {
-            // Finished processing, so stop showing the loader
-            setIsProcessing(false);
+          // Whether it succeeded or failed, the redirect check is done.
+          // The onAuthStateChanged listener in useUser will handle the user state update.
+          // We can now show the page.
+          setIsLoading(false);
         });
-    } else if (!isUserLoading && !auth) {
-        // If auth is not ready and user is not loading, something is wrong
-        setIsProcessing(false);
+    } else if (!isUserLoading) {
+        // If user is not loading and we don't have an auth object, just show the page.
+        setIsLoading(false);
     }
   }, [user, isUserLoading, auth, router, toast]);
 
   const handleSignIn = async (e: FormEvent) => {
     e.preventDefault();
+    if (!auth) return;
     setIsProcessing(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle the redirect via the useEffect above
+      // onAuthStateChanged in useUser hook will trigger redirect via useEffect above
     } catch (error) {
       console.error("Sign in error", error);
       if (error instanceof FirebaseError) {
@@ -78,41 +82,25 @@ export default function LoginPage() {
   };
 
   const handleGoogleSignIn = async () => {
+    if (!auth) return;
     const provider = new GoogleAuthProvider();
     setIsProcessing(true);
-    try {
-      await signInWithRedirect(auth, provider);
-    } catch (error) {
-      console.error("Google sign in error", error);
-      setIsProcessing(false);
-      if (error instanceof FirebaseError) {
-        toast({
-          variant: "destructive",
-          title: "Google Sign In Failed",
-          description: error.message,
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Google Sign In Failed",
-          description: "An unexpected error occurred.",
-        });
-      }
-    }
+    // Use redirect which is more robust
+    await signInWithRedirect(auth, provider);
   };
 
-  // While checking auth state, redirect result, or if user is already logged in, show a loader.
-  if (isUserLoading || isProcessing) {
+  // Show a loader while checking for redirect results or initial user state
+  if (isLoading || isUserLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
-    ); 
+    );
   }
   
-  // Only show the login page if there's no user and we're not processing anything
+  // If user exists after loading, the effect will redirect. Render nothing here to avoid flicker.
   if (user) {
-    return null; // Or another loader, since the redirect is imminent
+    return null;
   }
 
   return (
@@ -129,13 +117,16 @@ export default function LoginPage() {
           <form onSubmit={handleSignIn} className="grid gap-4">
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
+              <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={e => setEmail(e.target.value)} disabled={isProcessing}/>
             </div>
              <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required value={password} onChange={e => setPassword(e.target.value)} />
+              <Input id="password" type="password" required value={password} onChange={e => setPassword(e.target.value)} disabled={isProcessing}/>
             </div>
-            <Button className="w-full" type="submit">Sign in</Button>
+            <Button className="w-full" type="submit" disabled={isProcessing}>
+              {isProcessing && !email ? null : <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Sign in
+            </Button>
           </form>
 
           <div className="relative mt-4">
@@ -148,7 +139,8 @@ export default function LoginPage() {
               </span>
             </div>
           </div>
-          <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn}>
+          <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn} disabled={isProcessing}>
+             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Sign in with Google
           </Button>
            <div className="mt-4 text-center text-sm">

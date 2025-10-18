@@ -9,7 +9,7 @@ import { Logo } from "@/components/logo";
 import { useAuth, useFirestore, useUser } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
-import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithRedirect, getRedirectResult, User as FirebaseUser } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,29 +26,33 @@ export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [isProcessing, setIsProcessing] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const createUserDocument = async (newUser: FirebaseUser, name?: string | null) => {
+    if (!firestore) return;
+    await setDoc(doc(firestore, "users", newUser.uid), {
+      uid: newUser.uid,
+      displayName: name || newUser.displayName,
+      email: newUser.email,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  };
 
   useEffect(() => {
-    // Redirect if user is already logged in
+    // If we have a user, redirect to dashboard.
     if (!isUserLoading && user) {
       router.push('/dashboard');
       return;
     }
-
-    // If auth is ready and there's no user, check for redirect result
-    if (!isUserLoading && !user && auth && firestore) {
+    
+    if (auth && !user) {
       getRedirectResult(auth)
         .then(async (result) => {
           if (result) {
-            // User just signed up via Google redirect.
-            const newUser = result.user;
-            await setDoc(doc(firestore, "users", newUser.uid), {
-              uid: newUser.uid,
-              displayName: newUser.displayName,
-              email: newUser.email,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            }, { merge: true });
+            // User just signed up/in via Google redirect.
+            await createUserDocument(result.user);
           }
         })
         .catch((error) => {
@@ -59,16 +63,16 @@ export default function SignupPage() {
             description: "Could not complete sign up with Google.",
           });
         }).finally(() => {
-            setIsProcessing(false);
+            setIsLoading(false);
         });
     } else if (!isUserLoading) {
-        setIsProcessing(false);
+        setIsLoading(false);
     }
   }, [user, isUserLoading, auth, firestore, router, toast]);
 
   const handleSignUp = async (e: FormEvent) => {
     e.preventDefault();
-    if (!firestore || !auth) return;
+    if (!auth) return;
     setIsProcessing(true);
 
     try {
@@ -76,21 +80,13 @@ export default function SignupPage() {
       const newUser = userCredential.user;
       
       await updateProfile(newUser, { displayName });
-
-      // Create a user document in Firestore
-      await setDoc(doc(firestore, "users", newUser.uid), {
-        uid: newUser.uid,
-        displayName,
-        email,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await createUserDocument(newUser, displayName);
 
       toast({
         title: "Account Created!",
         description: "You have been successfully signed up.",
       });
-      // onAuthStateChanged will handle the redirect
+      // onAuthStateChanged in useUser hook will handle redirect via useEffect above
     } catch (error) {
       console.error("Sign up error", error);
       setIsProcessing(false);
@@ -114,28 +110,10 @@ export default function SignupPage() {
     if (!auth) return;
     const provider = new GoogleAuthProvider();
     setIsProcessing(true);
-    try {
-      await signInWithRedirect(auth, provider);
-    } catch (error) {
-      console.error("Google sign in error", error);
-      setIsProcessing(false);
-      if (error instanceof FirebaseError) {
-        toast({
-          variant: "destructive",
-          title: "Google Sign In Failed",
-          description: error.message,
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Google Sign In Failed",
-          description: "An unexpected error occurred.",
-        });
-      }
-    }
+    await signInWithRedirect(auth, provider);
   };
   
-  if (isUserLoading || isProcessing) {
+  if (isLoading || isUserLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -143,7 +121,7 @@ export default function SignupPage() {
     );
   }
   
-  // Only show the signup page if there's no user and we're not processing anything
+  // If user exists after loading, the effect will redirect.
   if (user) {
     return null;
   }
@@ -162,17 +140,20 @@ export default function SignupPage() {
           <form onSubmit={handleSignUp} className="grid gap-4">
              <div className="grid gap-2">
               <Label htmlFor="displayName">Name</Label>
-              <Input id="displayName" type="text" placeholder="Your Name" required value={displayName} onChange={e => setDisplayName(e.target.value)} />
+              <Input id="displayName" type="text" placeholder="Your Name" required value={displayName} onChange={e => setDisplayName(e.target.value)} disabled={isProcessing} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
+              <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={e => setEmail(e.target.value)} disabled={isProcessing} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="••••••••" required value={password} onChange={e => setPassword(e.g.et.value)} />
+              <Input id="password" type="password" placeholder="••••••••" required value={password} onChange={e => setPassword(e.target.value)} disabled={isProcessing}/>
             </div>
-            <Button className="w-full" type="submit">Create Account</Button>
+            <Button className="w-full" type="submit" disabled={isProcessing}>
+               {isProcessing && !displayName ? null : <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create Account
+            </Button>
           </form>
 
           <div className="relative mt-4">
@@ -185,7 +166,8 @@ export default function SignupPage() {
               </span>
             </div>
           </div>
-          <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn}>
+          <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn} disabled={isProcessing}>
+             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Sign up with Google
           </Button>
 
