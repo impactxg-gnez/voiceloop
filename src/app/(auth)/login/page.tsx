@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
-import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithRedirect } from "firebase/auth";
 import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
@@ -23,37 +23,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // If we have a user, redirect to dashboard.
     if (!isUserLoading && user) {
       router.push('/dashboard');
-      return;
     }
-
-    // If auth is ready and user is not loaded yet, check for redirect result.
-    if (auth && !user) {
-      getRedirectResult(auth)
-        .catch((error) => {
-          console.error("Google redirect sign in error", error);
-          toast({
-            variant: "destructive",
-            title: "Google Sign In Failed",
-            description: "Could not complete sign in with Google.",
-          });
-        })
-        .finally(() => {
-          // Whether it succeeded or failed, the redirect check is done.
-          // The onAuthStateChanged listener in useUser will handle the user state update.
-          // We can now show the page.
-          setIsLoading(false);
-        });
-    } else if (!isUserLoading) {
-        // If user is not loading and we don't have an auth object, just show the page.
-        setIsLoading(false);
-    }
-  }, [user, isUserLoading, auth, router, toast]);
+  }, [user, isUserLoading, router]);
 
   const handleSignIn = async (e: FormEvent) => {
     e.preventDefault();
@@ -77,6 +53,7 @@ export default function LoginPage() {
           description: "An unexpected error occurred.",
         });
       }
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -89,8 +66,8 @@ export default function LoginPage() {
     await signInWithRedirect(auth, provider);
   };
 
-  // Show a loader while checking for redirect results or initial user state
-  if (isLoading || isUserLoading) {
+  // Show a loader while checking for initial user state
+  if (isUserLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -124,7 +101,7 @@ export default function LoginPage() {
               <Input id="password" type="password" required value={password} onChange={e => setPassword(e.target.value)} disabled={isProcessing}/>
             </div>
             <Button className="w-full" type="submit" disabled={isProcessing}>
-              {isProcessing && !email ? null : <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Sign in
             </Button>
           </form>
@@ -140,8 +117,7 @@ export default function LoginPage() {
             </div>
           </div>
           <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn} disabled={isProcessing}>
-             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Sign in with Google
+             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Sign in with Google'}
           </Button>
            <div className="mt-4 text-center text-sm">
             Don&apos;t have an account?{" "}

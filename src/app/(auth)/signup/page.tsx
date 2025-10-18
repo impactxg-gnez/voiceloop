@@ -9,7 +9,7 @@ import { Logo } from "@/components/logo";
 import { useAuth, useFirestore, useUser } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
-import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithRedirect, getRedirectResult, User as FirebaseUser } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithRedirect, User as FirebaseUser } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -27,11 +27,12 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   const createUserDocument = async (newUser: FirebaseUser, name?: string | null) => {
     if (!firestore) return;
-    await setDoc(doc(firestore, "users", newUser.uid), {
+    const userRef = doc(firestore, "users", newUser.uid);
+    // Use setDoc with merge:true to create or update, useful for Google sign-in
+    await setDoc(userRef, {
       uid: newUser.uid,
       displayName: name || newUser.displayName,
       email: newUser.email,
@@ -41,34 +42,10 @@ export default function SignupPage() {
   };
 
   useEffect(() => {
-    // If we have a user, redirect to dashboard.
     if (!isUserLoading && user) {
       router.push('/dashboard');
-      return;
     }
-    
-    if (auth && !user) {
-      getRedirectResult(auth)
-        .then(async (result) => {
-          if (result) {
-            // User just signed up/in via Google redirect.
-            await createUserDocument(result.user);
-          }
-        })
-        .catch((error) => {
-          console.error("Google redirect sign up error", error);
-          toast({
-            variant: "destructive",
-            title: "Google Sign Up Failed",
-            description: "Could not complete sign up with Google.",
-          });
-        }).finally(() => {
-            setIsLoading(false);
-        });
-    } else if (!isUserLoading) {
-        setIsLoading(false);
-    }
-  }, [user, isUserLoading, auth, firestore, router, toast]);
+  }, [user, isUserLoading, router]);
 
   const handleSignUp = async (e: FormEvent) => {
     e.preventDefault();
@@ -89,7 +66,6 @@ export default function SignupPage() {
       // onAuthStateChanged in useUser hook will handle redirect via useEffect above
     } catch (error) {
       console.error("Sign up error", error);
-      setIsProcessing(false);
       if (error instanceof FirebaseError) {
         toast({
           variant: "destructive",
@@ -103,6 +79,8 @@ export default function SignupPage() {
           description: "An unexpected error occurred.",
         });
       }
+    } finally {
+        setIsProcessing(false);
     }
   };
 
@@ -113,7 +91,7 @@ export default function SignupPage() {
     await signInWithRedirect(auth, provider);
   };
   
-  if (isLoading || isUserLoading) {
+  if (isUserLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -151,7 +129,7 @@ export default function SignupPage() {
               <Input id="password" type="password" placeholder="••••••••" required value={password} onChange={e => setPassword(e.target.value)} disabled={isProcessing}/>
             </div>
             <Button className="w-full" type="submit" disabled={isProcessing}>
-               {isProcessing && !displayName ? null : <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+               {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Account
             </Button>
           </form>
@@ -167,8 +145,7 @@ export default function SignupPage() {
             </div>
           </div>
           <Button variant="outline" className="w-full mt-4" onClick={handleGoogleSignIn} disabled={isProcessing}>
-             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Sign up with Google
+             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Sign up with Google'}
           </Button>
 
            <div className="mt-4 text-center text-sm">

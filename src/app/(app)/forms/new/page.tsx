@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useRouter } from 'next/navigation';
 import { PlusCircle, Trash2, Loader2 } from 'lucide-react';
 import { useFirestore, useUser } from '@/firebase';
-import { collection, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
+import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 
 type Question = {
@@ -44,7 +44,10 @@ export default function NewFormPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!user || !firestore) return;
+    if (!user || !firestore) {
+        toast({ variant: 'destructive', title: 'You must be logged in to create a form.' });
+        return;
+    }
 
     setIsSubmitting(true);
 
@@ -62,22 +65,21 @@ export default function NewFormPage() {
     }
 
     try {
-      // Create a reference for the new form document
-      const formRef = doc(collection(firestore, 'forms'));
-
-      // Batch write the form and its questions
       const batch = writeBatch(firestore);
       
-      // Set the main form document
+      // Create a reference for the new form document with a unique ID
+      const formRef = doc(collection(firestore, 'forms'));
+
+      // Set the main form document data
       batch.set(formRef, {
         title: formTitle,
-        ownerUid: user.uid,
+        ownerUid: user.uid, // <-- This is crucial for security rules
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         questionCount: formQuestions.length,
       });
       
-      // Set the questions in the subcollection
+      // Set the questions in the subcollection for that form
       formQuestions.forEach((questionText, index) => {
         const questionRef = doc(collection(firestore, 'forms', formRef.id, 'questions'));
         batch.set(questionRef, {
@@ -86,6 +88,7 @@ export default function NewFormPage() {
         });
       });
 
+      // Commit the batch
       await batch.commit();
 
       toast({ title: 'Form published!', description: 'Your new form is live.' });
@@ -96,7 +99,7 @@ export default function NewFormPage() {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Could not create the form. Please try again.',
+        description: 'Could not create the form. Please check permissions and try again.',
       });
     } finally {
         setIsSubmitting(false);
@@ -104,9 +107,14 @@ export default function NewFormPage() {
   };
 
   if (isUserLoading) {
-    return <div>Loading...</div>
+    return (
+        <div className="flex h-screen w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+    );
   }
 
+  // Redirect if user is not logged in after checking.
   if (!user) {
     router.push('/login');
     return null;
