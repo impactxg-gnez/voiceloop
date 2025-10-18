@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const { user, isUserLoading } = useUser();
@@ -20,26 +22,18 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSigningIn, setIsSigningIn] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(true);
   
   useEffect(() => {
-    // This effect will run when the user state is definitively known.
+    // Redirect if user is already logged in
     if (!isUserLoading && user) {
       router.push('/dashboard');
+      return; // Stop further execution
     }
-  }, [user, isUserLoading, router]);
 
-  useEffect(() => {
-    if (auth) {
+    // If auth is ready and there's no user, check for redirect result
+    if (!isUserLoading && !user && auth) {
       getRedirectResult(auth)
-        .then((result) => {
-          if (result) {
-            // This means the user has just been redirected from Google.
-            // The onAuthStateChanged listener will handle the user state update,
-            // and the effect above will trigger the redirect to the dashboard.
-            // No need to manually push here.
-          }
-        })
         .catch((error) => {
           console.error("Google redirect sign in error", error);
           toast({
@@ -49,20 +43,21 @@ export default function LoginPage() {
           });
         })
         .finally(() => {
-            // We can now show the page content as the redirect check is complete.
-            setIsSigningIn(false);
+            // Finished processing, so stop showing the loader
+            setIsProcessing(false);
         });
-    } else {
-        // If auth is not ready, we are still 'signing in' from the page's perspective
-        setIsSigningIn(false);
+    } else if (!isUserLoading && !auth) {
+        // If auth is not ready and user is not loading, something is wrong
+        setIsProcessing(false);
     }
-  }, [auth, router, toast]);
+  }, [user, isUserLoading, auth, router, toast]);
 
   const handleSignIn = async (e: FormEvent) => {
     e.preventDefault();
+    setIsProcessing(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // The onAuthStateChanged listener will pick this up and the useEffect will redirect.
+      // onAuthStateChanged will handle the redirect via the useEffect above
     } catch (error) {
       console.error("Sign in error", error);
       if (error instanceof FirebaseError) {
@@ -78,17 +73,18 @@ export default function LoginPage() {
           description: "An unexpected error occurred.",
         });
       }
+      setIsProcessing(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
+    setIsProcessing(true);
     try {
-      // Set the loading state right before redirecting
-      setIsSigningIn(true);
       await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Google sign in error", error);
+      setIsProcessing(false);
       if (error instanceof FirebaseError) {
         toast({
           variant: "destructive",
@@ -102,14 +98,21 @@ export default function LoginPage() {
           description: "An unexpected error occurred.",
         });
       }
-      setIsSigningIn(false);
     }
   };
 
-  // While checking for redirect result or if user is loading, show a loader.
-  // Don't show the page if the user is already logged in, as the redirect will happen.
-  if (isUserLoading || isSigningIn || user) {
-    return <div>Loading...</div>; 
+  // While checking auth state, redirect result, or if user is already logged in, show a loader.
+  if (isUserLoading || isProcessing) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    ); 
+  }
+  
+  // Only show the login page if there's no user and we're not processing anything
+  if (user) {
+    return null; // Or another loader, since the redirect is imminent
   }
 
   return (
