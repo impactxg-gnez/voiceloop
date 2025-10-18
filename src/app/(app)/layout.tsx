@@ -3,22 +3,13 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/logo";
-import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset } from "@/components/ui/sidebar";
-import { useAuth } from "@/firebase";
-import { Home, LineChart, LogOut, MessageSquare, Settings, User, FileText, CreditCard } from "lucide-react";
+import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter } from "@/components/ui/sidebar";
+import { useAuth, useUser } from "@/firebase";
+import { Home, LineChart, LogOut, MessageSquare, Settings, User, FileText, CreditCard, Loader2 } from "lucide-react";
 import Link from "next/link";
-import React from "react";
+import React, { useEffect } from "react";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { useRouter } from "next/navigation";
-
-// MOCK USER for bypassing login
-const MOCK_USER = {
-  uid: 'mock-user-id',
-  email: 'test@example.com',
-  displayName: 'Test User',
-  photoURL: null,
-};
-
 
 const navItems = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
@@ -35,20 +26,28 @@ export default function AppLayout({
   const userAvatar = PlaceHolderImages.find(p => p.id === 'user-avatar');
   const auth = useAuth();
   const router = useRouter();
+  const { user, isUserLoading } = useUser();
 
-  // Use the mock user
-  const user = MOCK_USER;
-  const isUserLoading = false;
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.push('/login');
+    }
+  }, [isUserLoading, user, router]);
 
   const handleLogout = async () => {
-    // In mock mode, just redirect to login
-    router.push('/login');
+    if (auth) {
+      await auth.signOut();
+      router.push('/login');
+    }
   };
-  
-  // The original authentication check is removed.
-  // if (isUserLoading) { ... }
-  // if (!user) { ... }
 
+  if (isUserLoading || !user) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
