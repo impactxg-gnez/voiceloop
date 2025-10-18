@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
-import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithRedirect, getRedirectResult } from "firebase/auth";
 
 export default function LoginPage() {
   const { user, isUserLoading } = useUser();
@@ -20,12 +20,37 @@ export default function LoginPage() {
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(true);
   
   useEffect(() => {
     if (user && !isUserLoading) {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
+
+  useEffect(() => {
+    if (auth) {
+      getRedirectResult(auth)
+        .then((result) => {
+          if (result) {
+            router.push('/dashboard');
+          }
+        })
+        .catch((error) => {
+          console.error("Google redirect sign in error", error);
+          toast({
+            variant: "destructive",
+            title: "Google Sign In Failed",
+            description: "Could not complete sign in with Google.",
+          });
+        })
+        .finally(() => {
+            setIsSigningIn(false);
+        });
+    } else {
+        setIsSigningIn(false);
+    }
+  }, [auth, router, toast]);
 
   const handleSignIn = async (e: FormEvent) => {
     e.preventDefault();
@@ -53,8 +78,7 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
-      router.push('/dashboard');
+      await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Google sign in error", error);
       if (error instanceof FirebaseError) {
@@ -73,7 +97,7 @@ export default function LoginPage() {
     }
   };
 
-  if (isUserLoading || user) {
+  if (isUserLoading || user || isSigningIn) {
     return <div>Loading...</div>; // Or a proper loader
   }
 

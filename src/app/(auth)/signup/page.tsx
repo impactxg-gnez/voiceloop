@@ -8,7 +8,7 @@ import { Logo } from "@/components/logo";
 import { useAuth, useFirestore, useUser } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseError } from "firebase/app";
-import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,12 +24,44 @@ export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(true);
 
   useEffect(() => {
     if (user && !isUserLoading) {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
+
+  useEffect(() => {
+    if (auth && firestore) {
+      getRedirectResult(auth)
+        .then(async (result) => {
+          if (result) {
+            const newUser = result.user;
+            await setDoc(doc(firestore, "users", newUser.uid), {
+              uid: newUser.uid,
+              displayName: newUser.displayName,
+              email: newUser.email,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }, { merge: true });
+            router.push('/dashboard');
+          }
+        })
+        .catch((error) => {
+          console.error("Google redirect sign in error", error);
+          toast({
+            variant: "destructive",
+            title: "Google Sign Up Failed",
+            description: "Could not complete sign up with Google.",
+          });
+        }).finally(() => {
+            setIsSigningIn(false);
+        });
+    } else {
+        setIsSigningIn(false);
+    }
+  }, [auth, firestore, router, toast]);
 
   const handleSignUp = async (e: FormEvent) => {
     e.preventDefault();
@@ -77,19 +109,7 @@ export default function SignupPage() {
     if (!firestore) return;
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      const newUser = result.user;
-
-      // Create a user document in Firestore for new Google sign-ins, merging to avoid overwrites
-      await setDoc(doc(firestore, "users", newUser.uid), {
-        uid: newUser.uid,
-        displayName: newUser.displayName,
-        email: newUser.email,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true }); // Use merge to avoid overwriting if doc already exists
-
-      router.push('/dashboard');
+      await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Google sign in error", error);
       if (error instanceof FirebaseError) {
@@ -108,7 +128,7 @@ export default function SignupPage() {
     }
   };
   
-  if (isUserLoading || user) {
+  if (isUserLoading || user || isSigningIn) {
     return <div>Loading...</div>; // Or a proper loader
   }
 
