@@ -1,37 +1,34 @@
 'use client';
 
-import { useCollection, useFirestore, useUser } from "@/firebase";
-import { useMemoFirebase } from "@/firebase/provider";
+import { useCollection, useSupabaseClient, useUser } from "@/supabase";
+import { useMemoSupabase } from "@/supabase/provider";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { FileText, PlusCircle, ArrowRight } from "lucide-react";
+import { FileText, PlusCircle, ArrowRight, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { collection, query, where, orderBy } from "firebase/firestore";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import { Card } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 
 type Form = {
   id: string;
   title: string;
-  questionCount: number;
-  createdAt: { toDate: () => Date };
+  question_count: number;
+  created_at: string;
 };
 
 export default function FormsPage() {
-  const firestore = useFirestore();
+  const supabase = useSupabaseClient();
   const { user } = useUser();
+  const { toast } = useToast();
 
-  const formsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(
-      collection(firestore, "forms"),
-      where("ownerUid", "==", user.uid),
-      orderBy("createdAt", "desc")
-    );
-  }, [firestore, user]);
+  const formsQuery = useMemoSupabase(() => {
+    if (!user) return null;
+    return 'forms';
+  }, [user]);
 
-  const { data: forms, isLoading } = useCollection<Form>(formsQuery);
+  const { data: forms, isLoading } = useCollection<Form>(formsQuery, '*', { owner_uid: user?.id });
 
   return (
     <div className="flex flex-col h-full">
@@ -64,18 +61,53 @@ export default function FormsPage() {
                   <h3 className="text-lg font-semibold mb-2">{form.title}</h3>
                   <div className="flex items-center text-sm text-muted-foreground">
                     <FileText className="h-4 w-4 mr-2"/>
-                    <span>{form.questionCount || 0} questions</span>
+                    <span>{form.question_count || 0} questions</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Created {formatDistanceToNow(form.createdAt.toDate(), { addSuffix: true })}
+                    Created {formatDistanceToNow(new Date(form.created_at), { addSuffix: true })}
                   </p>
                 </div>
-                <div className="p-4 border-t flex justify-end">
-                   <Button asChild variant="outline" size="sm">
-                    <Link href={`/forms/record/${form.id}`}>
-                      View Form <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
+                <div className="p-4 border-t">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/forms/record/${form.id}`}>
+                        View <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                    <Button asChild variant="secondary" size="sm">
+                      <Link href={`/forms/edit/${form.id}`}>
+                        <Pencil className="mr-2 h-4 w-4" /> Edit
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        const url = `${window.location.origin}/forms/record/${form.id}`;
+                        try {
+                          await navigator.clipboard.writeText(url);
+                          toast({ title: 'Link copied', description: 'Form link copied to clipboard.' });
+                        } catch {
+                          toast({ title: 'Link', description: url });
+                        }
+                      }}
+                    >
+                      Share
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={async () => {
+                        if (!confirm('Delete this form? This action cannot be undone.')) return;
+                        const { error } = await supabase.from('forms').delete().eq('id', form.id);
+                        if (!error) {
+                          window.location.reload();
+                        }
+                      }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))}

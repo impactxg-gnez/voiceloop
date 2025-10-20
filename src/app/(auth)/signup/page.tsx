@@ -6,20 +6,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/logo";
-import { useAuth, useFirestore, useUser } from "@/firebase";
+import { useSupabaseClient, useUser } from "@/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { FirebaseError } from "firebase/app";
-import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithRedirect, User as FirebaseUser } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function SignupPage() {
   const { user, isUserLoading } = useUser();
-  const auth = useAuth();
-  const firestore = useFirestore();
+  const supabase = useSupabaseClient();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -27,19 +24,6 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-
-  const createUserDocument = async (newUser: FirebaseUser, name?: string | null) => {
-    if (!firestore) return;
-    const userRef = doc(firestore, "users", newUser.uid);
-    // Use setDoc with merge:true to create or update, useful for Google sign-in
-    await setDoc(userRef, {
-      uid: newUser.uid,
-      displayName: name || newUser.displayName,
-      email: newUser.email,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-  };
 
   useEffect(() => {
     if (!isUserLoading && user) {
@@ -49,24 +33,21 @@ export default function SignupPage() {
 
   const handleSignUp = async (e: FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
     setIsProcessing(true);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const newUser = userCredential.user;
-      
-      await updateProfile(newUser, { displayName });
-      await createUserDocument(newUser, displayName);
-
-      toast({
-        title: "Account Created!",
-        description: "You have been successfully signed up.",
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: displayName,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/verify`
+        }
       });
-      // onAuthStateChanged in useUser hook will handle redirect via useEffect above
-    } catch (error) {
-      console.error("Sign up error", error);
-      if (error instanceof FirebaseError) {
+
+      if (error) {
         toast({
           variant: "destructive",
           title: "Sign Up Failed",
@@ -74,21 +55,51 @@ export default function SignupPage() {
         });
       } else {
         toast({
-          variant: "destructive",
-          title: "Sign Up Failed",
-          description: "An unexpected error occurred.",
+          title: "Account Created!",
+          description: "Please check your email to confirm your account.",
         });
+        // Redirect to success page
+        router.push('/signup/success');
       }
+    } catch (error) {
+      console.error("Sign up error", error);
+      toast({
+        variant: "destructive",
+        title: "Sign Up Failed",
+        description: "An unexpected error occurred.",
+      });
     } finally {
-        setIsProcessing(false);
+      setIsProcessing(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    if (!auth) return;
-    const provider = new GoogleAuthProvider();
     setIsProcessing(true);
-    await signInWithRedirect(auth, provider);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`
+        }
+      });
+      
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Google Sign Up Failed",
+          description: error.message,
+        });
+        setIsProcessing(false);
+      }
+    } catch (error) {
+      console.error("Google sign up error", error);
+      toast({
+        variant: "destructive",
+        title: "Google Sign Up Failed",
+        description: "An unexpected error occurred.",
+      });
+      setIsProcessing(false);
+    }
   };
   
   if (isUserLoading) {
@@ -106,12 +117,15 @@ export default function SignupPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-secondary">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-sm mx-4">
         <CardHeader className="text-center">
           <Logo className="w-12 h-12 mx-auto text-primary" />
           <CardTitle className="text-2xl mt-4">Create an Account</CardTitle>
           <CardDescription>
-            Get started with Vocalize for free.
+            Get started with VoiseForm for free.
           </CardDescription>
         </CardHeader>
         <CardContent>

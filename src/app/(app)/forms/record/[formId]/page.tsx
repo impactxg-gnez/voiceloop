@@ -8,9 +8,12 @@ import { transcribeVoiceResponse } from '@/ai/flows/transcribe-voice-responses';
 import { generateQuestionAudio } from '@/ai/flows/generate-question-audio';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
-import { useCollection, useDoc, useFirestore, useUser } from '@/firebase';
-import { useMemoFirebase } from '@/firebase/provider';
-import { collection, doc, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { useCollection, useDoc, useSupabaseClient, useUser } from '@/supabase';
+import { useMemoSupabase } from '@/supabase/provider';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { FormPageDisplay } from '@/components/form-page-display';
+import { DemographicsCapture } from '@/components/demographics-capture';
 
 type QuestionState = {
   isRecording: boolean;
@@ -25,23 +28,35 @@ type QuestionState = {
 };
 
 type FormDoc = { title: string };
-type QuestionDoc = { text: string; order: number };
+type QuestionDoc = { text: string; question_order: number };
+type FormPageDoc = { 
+  id: string; 
+  title: string; 
+  content: string | null; 
+  page_order: number; 
+  is_intro_page: boolean; 
+};
 
 const animationFrameIds: Record<number, number> = {};
 
 export default function RecordFormPage({ params }: { params: { formId: string } }) {
   const { formId } = params;
-  const firestore = useFirestore();
+  const supabase = useSupabaseClient();
   const { user } = useUser();
   const { toast } = useToast();
+  const router = useRouter();
 
-  const formDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'forms', formId) : null, [firestore, formId]);
-  const { data: form, isLoading: isLoadingForm } = useDoc<FormDoc>(formDocRef);
+  const formDocRef = useMemoSupabase(() => formId ? formId : null, [formId]);
+  const { data: form, isLoading: isLoadingForm } = useDoc<FormDoc>('forms', formDocRef);
 
-  const questionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'forms', formId, 'questions'), orderBy('order')) : null, [firestore, formId]);
-  const { data: questions, isLoading: isLoadingQuestions } = useCollection<QuestionDoc>(questionsQuery);
+  const questionsQuery = useMemoSupabase(() => formId ? formId : null, [formId]);
+  const { data: questions, isLoading: isLoadingQuestions } = useCollection<QuestionDoc>('questions', '*', { form_id: formId });
+  const { data: formPages, isLoading: isLoadingPages } = useCollection<FormPageDoc>('form_pages', '*', { form_id: formId });
   
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [showPages, setShowPages] = useState(true);
+  const [demographicsDone, setDemographicsDone] = useState(false);
   const [questionStates, setQuestionStates] = useState<Record<number, QuestionState>>({});
   const [activeRecordingIndex, setActiveRecordingIndex] = useState<number | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -332,7 +347,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       });
       return;
     }
-    if (!firestore || !questions) return;
+    if (!supabase || !questions) return;
 
 
     setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: true } }));
@@ -344,19 +359,29 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       const base64Audio = reader.result as string;
       
       try {
+        // 1) Insert placeholder row so a response always appears immediately
+        const { data: inserted, error: insertError } = await supabase
+          .from('submissions')
+          .insert({
+            form_id: formId,
+            question_id: questions[questionIndex].id,
+            question_text: questions[questionIndex].text,
+            audio_url: '', // optional: upload to storage and set URL
+            transcription: 'processing…',
+            submitter_uid: user?.id ?? null,
+          })
+          .select('id')
+          .single();
+
+        if (insertError) throw insertError;
+
+        // 2) Transcribe and update in-place
         const result = await transcribeVoiceResponse({ audioPath: base64Audio });
-        
-        // Save submission to Firestore
-        await addDoc(collection(firestore, 'submissions'), {
-            formId: formId,
-            questionId: questions[questionIndex].id,
-            questionText: questions[questionIndex].text,
-            audioUrl: '', // In a real app you'd upload audio to Cloud Storage and save the URL
-            transcription: result.text,
-            submitterUid: user?.uid ?? null,
-            createdAt: serverTimestamp(),
-        });
-        
+        await supabase
+          .from('submissions')
+          .update({ transcription: result.text || 'transcription unavailable' })
+          .eq('id', inserted.id);
+
         toast({
           title: 'Feedback Submitted!',
           description: `Transcription: "${result.text}"`,
@@ -382,10 +407,27 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     };
   };
 
-  const isLoading = isLoadingForm || isLoadingQuestions;
+  const isLoading = isLoadingForm || isLoadingQuestions || isLoadingPages;
   const currentQuestionText = questions?.[currentQuestionIndex]?.text;
   const currentQuestionState = questionStates[currentQuestionIndex];
   const progressPercentage = questions ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
+
+  // Sort form pages by page_order
+  const sortedPages = formPages?.sort((a, b) => a.page_order - b.page_order) || [];
+
+  const handlePageComplete = () => {
+    if (currentPageIndex < sortedPages.length - 1) {
+      setCurrentPageIndex(prev => prev + 1);
+    } else {
+      setShowPages(false);
+    }
+  };
+
+  const handlePageBack = () => {
+    if (currentPageIndex > 0) {
+      setCurrentPageIndex(prev => prev - 1);
+    }
+  };
   
   if (isLoading) {
     return (
@@ -406,6 +448,27 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
               </Button>
             </div>
         </div>
+    );
+  }
+
+  // Show form pages if they exist and we haven't completed them yet
+  if (showPages && sortedPages.length > 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-secondary py-12 px-4">
+        <FormPageDisplay
+          pages={sortedPages}
+          currentPageIndex={currentPageIndex}
+          onPageComplete={handlePageComplete}
+          onPageBack={handlePageBack}
+        />
+      </div>
+    );
+  }
+
+  // Show demographics screen once pages are done but before questions
+  if (!demographicsDone) {
+    return (
+      <DemographicsCapture formId={formId} onContinue={() => setDemographicsDone(true)} />
     );
   }
 
@@ -440,7 +503,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                                 {isRecordingThis ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
                             </button>
                             <canvas 
-                                ref={el => canvasRefs.current[currentQuestionIndex] = el}
+                                ref={el => { canvasRefs.current[currentQuestionIndex] = el; }}
                                 width="200"
                                 height="80"
                                 className="rounded-md bg-secondary"

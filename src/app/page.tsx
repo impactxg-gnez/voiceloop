@@ -56,10 +56,10 @@ export default function Home() {
                   Turn Voices into <span className="text-primary">Actionable Insights</span>
                 </h1>
                 <p className="text-lg text-muted-foreground mb-8">
-                  Vocalize is the modern way to collect feedback. Build beautiful forms with voice recording capabilities, get AI-powered transcriptions, and uncover deep insights from your audience.
+                  VoiseForm is the modern way to collect feedback. Build beautiful forms with voice recording capabilities, get AI-powered transcriptions, and uncover deep insights from your audience.
                 </p>
                 <Button size="lg" asChild>
-                  <Link href="/dashboard">
+                  <Link href="/signup">
                     Get Started For Free <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>
@@ -161,7 +161,7 @@ export default function Home() {
                 Start your journey towards better feedback and deeper customer understanding today.
               </p>
               <Button size="lg" asChild>
-                <Link href="/dashboard">
+                <Link href="/signup">
                   Start a 14-Day Free Trial
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>

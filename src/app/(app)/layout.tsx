@@ -4,12 +4,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/logo";
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset } from "@/components/ui/sidebar";
-import { useAuth, useUser } from "@/firebase";
+import { useSupabaseClient, useUser } from "@/supabase";
 import { Home, LineChart, LogOut, MessageSquare, Settings, User, FileText, CreditCard, Loader2 } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect } from "react";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { useRouter } from "next/navigation";
+import { AuthGuard } from "@/components/auth-guard";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
   { href: "/dashboard", icon: Home, label: "Dashboard" },
@@ -24,7 +26,7 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const userAvatar = PlaceHolderImages.find(p => p.id === 'user-avatar');
-  const auth = useAuth();
+  const supabase = useSupabaseClient();
   const router = useRouter();
   const { user, isUserLoading } = useUser();
 
@@ -35,10 +37,8 @@ export default function AppLayout({
   }, [isUserLoading, user, router]);
 
   const handleLogout = async () => {
-    if (auth) {
-      await auth.signOut();
-      router.push('/login');
-    }
+    await supabase.auth.signOut();
+    router.push('/login');
   };
 
   if (isUserLoading || !user) {
@@ -50,12 +50,13 @@ export default function AppLayout({
   }
 
   return (
-    <SidebarProvider>
+    <AuthGuard>
+      <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
           <Link href="/dashboard" className="flex items-center gap-2">
             <Logo className="w-7 h-7 text-primary" />
-            <span className="font-bold text-xl">Vocalize</span>
+            <span className="font-bold text-xl">VoiseForm</span>
           </Link>
         </SidebarHeader>
         <SidebarContent>
@@ -73,15 +74,18 @@ export default function AppLayout({
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter>
+          <div className="flex items-center justify-center mb-2">
+            <ThemeToggle />
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-3 w-full p-2 rounded-md hover:bg-sidebar-accent transition-colors">
                 <Avatar className="h-9 w-9">
-                  {userAvatar && <AvatarImage src={user.photoURL ?? userAvatar.imageUrl} data-ai-hint={userAvatar.imageHint}/>}
+                  {userAvatar && <AvatarImage src={user.user_metadata?.avatar_url ?? userAvatar.imageUrl} data-ai-hint={userAvatar.imageHint}/>}
                   <AvatarFallback>{user.email?.[0].toUpperCase() ?? 'U'}</AvatarFallback>
                 </Avatar>
                 <div className="text-left group-data-[collapsible=icon]:hidden">
-                  <p className="text-sm font-medium leading-none">{user.displayName ?? 'User'}</p>
+                  <p className="text-sm font-medium leading-none">{user.user_metadata?.full_name ?? 'User'}</p>
                   <p className="text-xs text-muted-foreground">{user.email}</p>
                 </div>
               </button>
@@ -114,5 +118,6 @@ export default function AppLayout({
         {children}
       </SidebarInset>
     </SidebarProvider>
+    </AuthGuard>
   );
 }

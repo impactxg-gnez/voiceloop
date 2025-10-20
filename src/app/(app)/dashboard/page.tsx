@@ -1,37 +1,33 @@
 'use client';
 
-import { useCollection, useFirestore, useUser } from "@/firebase";
-import { useMemoFirebase } from "@/firebase/provider";
+import { useCollection, useSupabaseClient, useUser } from "@/supabase";
+import { useMemoSupabase } from "@/supabase/provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { FileText, MessageSquare, PlusCircle, Smile, ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { collection, query, where, orderBy, limit } from "firebase/firestore";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
+import { UserManagement } from "@/components/user-management";
+import { AuthStatus } from "@/components/auth-status";
 
 type Form = {
   id: string;
   title: string;
-  createdAt: { toDate: () => Date };
+  created_at: string;
 };
 
 function RecentForms() {
-  const firestore = useFirestore();
+  const supabase = useSupabaseClient();
   const { user } = useUser();
 
-  const recentFormsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(
-      collection(firestore, "forms"),
-      where("ownerUid", "==", user.uid),
-      orderBy("createdAt", "desc"),
-      limit(5)
-    );
-  }, [firestore, user]);
+  const recentFormsQuery = useMemoSupabase(() => {
+    if (!user) return null;
+    return 'forms';
+  }, [user]);
 
-  const { data: forms, isLoading } = useCollection<Form>(recentFormsQuery);
+  const { data: forms, isLoading } = useCollection<Form>(recentFormsQuery, '*', { owner_uid: user?.id });
 
   if (isLoading) {
     return (
@@ -75,12 +71,12 @@ function RecentForms() {
       <h2 className="text-2xl font-semibold mb-4">Recent Forms</h2>
       <div className="border rounded-lg">
         <ul className="divide-y">
-          {forms.map((form) => (
+          {forms.slice(0, 5).map((form) => (
             <li key={form.id} className="p-4 hover:bg-muted/50 transition-colors flex justify-between items-center">
               <div>
                 <Link href={`/forms/record/${form.id}`} className="font-semibold hover:underline">{form.title}</Link>
                 <p className="text-sm text-muted-foreground">
-                  Created {formatDistanceToNow(form.createdAt.toDate(), { addSuffix: true })}
+                  Created {formatDistanceToNow(new Date(form.created_at), { addSuffix: true })}
                 </p>
               </div>
                <Button asChild variant="outline" size="sm">
@@ -148,6 +144,10 @@ export default function DashboardPage() {
           </div>
 
           <RecentForms />
+
+          <AuthStatus />
+
+          <UserManagement />
 
         </div>
       </main>

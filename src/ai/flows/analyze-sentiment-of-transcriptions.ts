@@ -62,7 +62,7 @@ const analyzeSentimentFlow = ai.defineFlow(
   async input => {
     try {
       const {text} = await prompt(input);
-      const parsedOutput = JSON.parse(text!.text);
+      const parsedOutput = JSON.parse(text!);
 
       const result: AnalyzeSentimentOutput = {
         sentimentLabel: parsedOutput.label,

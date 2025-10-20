@@ -7,17 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/logo";
 import Link from "next/link";
-import { useAuth, useUser } from "@/firebase";
+import { useSupabaseClient, useUser } from "@/supabase";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { FirebaseError } from "firebase/app";
-import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithRedirect } from "firebase/auth";
 import { Loader2 } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const { user, isUserLoading } = useUser();
-  const auth = useAuth();
+  const supabase = useSupabaseClient();
   const router = useRouter();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
@@ -33,37 +32,60 @@ export default function LoginPage() {
 
   const handleSignIn = async (e: FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
     setIsProcessing(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged in useUser hook will trigger redirect via useEffect above
-    } catch (error) {
-      console.error("Sign in error", error);
-      if (error instanceof FirebaseError) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
         toast({
           variant: "destructive",
           title: "Sign In Failed",
           description: error.message,
         });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Sign In Failed",
-          description: "An unexpected error occurred.",
-        });
       }
+      // onAuthStateChange in useUser hook will trigger redirect via useEffect above
+    } catch (error) {
+      console.error("Sign in error", error);
+      toast({
+        variant: "destructive",
+        title: "Sign In Failed",
+        description: "An unexpected error occurred.",
+      });
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    if (!auth) return;
-    const provider = new GoogleAuthProvider();
     setIsProcessing(true);
-    // Use redirect which is more robust
-    await signInWithRedirect(auth, provider);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`
+        }
+      });
+      
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Google Sign In Failed",
+          description: error.message,
+        });
+        setIsProcessing(false);
+      }
+    } catch (error) {
+      console.error("Google sign in error", error);
+      toast({
+        variant: "destructive",
+        title: "Google Sign In Failed",
+        description: "An unexpected error occurred.",
+      });
+      setIsProcessing(false);
+    }
   };
 
   // Show a loader while checking for initial user state
@@ -82,6 +104,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-secondary">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-sm mx-4">
         <CardHeader className="text-center">
           <Logo className="w-12 h-12 mx-auto text-primary" />
