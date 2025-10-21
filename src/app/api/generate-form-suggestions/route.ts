@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     // First try a simple text generation to test the connection
     const result = await ai.generateText({
-      model: 'googleai/gemini-2.0-flash-exp',
+      model: 'googleai/gemini-1.5-flash',
       prompt: `Generate 5 customer feedback questions for: "${description}". 
       
       Return the questions as a simple list, one per line.`,

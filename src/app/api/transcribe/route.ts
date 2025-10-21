@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const mimeType = audioFile.type || 'audio/wav';
 
     const result = await ai.generateText({
-      model: 'googleai/gemini-2.0-flash-exp',
+      model: 'googleai/gemini-1.5-flash',
       prompt: [
         {
           text: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary.',

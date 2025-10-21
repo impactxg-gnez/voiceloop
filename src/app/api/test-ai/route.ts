@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
     console.log('API Key available:', !!process.env.GOOGLE_AI_API_KEY || !!process.env.GEMINI_API_KEY || !!process.env.GOOGLE_API_KEY);
     
     const result = await ai.generateText({
-      model: 'googleai/gemini-2.0-flash-exp',
+      model: 'googleai/gemini-1.5-flash',
       prompt: 'Generate 3 simple questions for a customer feedback form about a restaurant.',
     });
 
