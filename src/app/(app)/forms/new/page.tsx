@@ -328,7 +328,44 @@ export default function NewFormPage() {
               />
               
               <div className="space-y-4">
-                <Label>Questions</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Questions</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newQuestions = questions.map(q => ({ ...q, qtype: 'voice' as const }));
+                        setQuestions(newQuestions);
+                      }}
+                    >
+                      Set All Voice
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newQuestions = questions.map(q => ({ ...q, qtype: 'mc' as const }));
+                        setQuestions(newQuestions);
+                      }}
+                    >
+                      Set All MCQ
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newQuestions = questions.map(q => ({ ...q, qtype: 'ranking' as const }));
+                        setQuestions(newQuestions);
+                      }}
+                    >
+                      Set All Ranking
+                    </Button>
+                  </div>
+                </div>
                 {questions.map((question, index) => (
                   <div key={question.id} className="space-y-2 border rounded-md p-3">
                     <div className="flex items-center gap-2">
@@ -352,16 +389,48 @@ export default function NewFormPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <div>
-                        <Label>Type</Label>
-                        <select
-                          className="w-full border rounded h-9 px-2"
-                          value={question.qtype}
-                          onChange={(e) => handleQuestionTypeChange(question.id, e.target.value as any)}
-                        >
-                          <option value="voice">Voice (default)</option>
-                          <option value="mc">Multiple Choice</option>
-                          <option value="ranking">Ranking</option>
-                        </select>
+                        <Label>Question Type</Label>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            variant={question.qtype === 'voice' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handleQuestionTypeChange(question.id, 'voice')}
+                            className={`flex-1 ${
+                              question.qtype === 'voice' 
+                                ? 'bg-teal-600 text-white hover:bg-teal-700' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            Voice
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={question.qtype === 'mc' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handleQuestionTypeChange(question.id, 'mc')}
+                            className={`flex-1 ${
+                              question.qtype === 'mc' 
+                                ? 'bg-teal-600 text-white hover:bg-teal-700' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            MCQ
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={question.qtype === 'ranking' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handleQuestionTypeChange(question.id, 'ranking')}
+                            className={`flex-1 ${
+                              question.qtype === 'ranking' 
+                                ? 'bg-teal-600 text-white hover:bg-teal-700' 
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            Ranking
+                          </Button>
+                        </div>
                       </div>
                       {(question.qtype === 'mc' || question.qtype === 'ranking') && (
                         <div className="md:col-span-2">

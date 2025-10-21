@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateText } from 'ai';
-import { google } from '@ai-sdk/google';
+import { ai } from '@/ai/genkit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,8 +18,8 @@ export async function POST(request: NextRequest) {
     const audioBase64 = Buffer.from(audioBuffer).toString('base64');
     const mimeType = audioFile.type || 'audio/wav';
 
-    const result = await generateText({
-      model: google('gemini-2.0-flash-exp'),
+    const result = await ai.generateText({
+      model: 'googleai/gemini-2.5-flash',
       prompt: [
         {
           text: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary.',

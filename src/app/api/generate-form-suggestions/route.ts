@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateObject } from 'ai';
 import { z } from 'zod';
-import { google } from '@ai-sdk/google';
+import { ai } from '@/ai/genkit';
 
 const FormSuggestionSchema = z.object({
   suggestions: z.array(z.string()).describe('Array of suggested questions for the form'),
@@ -24,8 +23,8 @@ export async function POST(request: NextRequest) {
       ranking: 'Generate questions that ask users to rank or prioritize items. Include the items to be ranked.'
     };
 
-    const result = await generateObject({
-      model: google('gemini-2.0-flash-exp'),
+    const result = await ai.generateObject({
+      model: 'googleai/gemini-2.5-flash',
       schema: FormSuggestionSchema,
       prompt: `You are an expert form builder. Based on the following description and form type, generate 5-8 relevant questions.
 
@@ -51,8 +50,17 @@ Generate questions that would be most valuable for ${formType}-based feedback co
     });
   } catch (error) {
     console.error('Error generating form suggestions:', error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      description,
+      formType
+    });
     return NextResponse.json(
-      { error: 'Failed to generate suggestions' },
+      { 
+        error: 'Failed to generate suggestions',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
