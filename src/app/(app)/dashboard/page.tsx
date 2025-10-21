@@ -9,8 +9,6 @@ import { FileText, MessageSquare, PlusCircle, Smile, ArrowRight } from "lucide-r
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
-import { UserManagement } from "@/components/user-management";
-import { AuthStatus } from "@/components/auth-status";
 
 type Form = {
   id: string;
@@ -144,10 +142,6 @@ export default function DashboardPage() {
           </div>
 
           <RecentForms />
-
-          <AuthStatus />
-
-          <UserManagement />
 
         </div>
       </main>
