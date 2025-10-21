@@ -8,8 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Mic, MicOff, Loader2, Sparkles, CheckCircle, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-type FormType = 'voice' | 'mcq' | 'ranking';
-
 interface AISuggestionBuilderProps {
   onSuggestionsGenerated: (suggestions: string[]) => void;
   onToggle: (enabled: boolean) => void;
@@ -22,7 +20,6 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [selectedFormType, setSelectedFormType] = useState<FormType>('voice');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
@@ -110,8 +107,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          description,
-          formType: selectedFormType 
+          description
         }),
       });
 
@@ -169,49 +165,6 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
       
       {enabled && (
         <CardContent className="space-y-4">
-          {/* Form Type Selectors */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Form Type:</label>
-            <div className="flex gap-2">
-              <Button
-                variant={selectedFormType === 'voice' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedFormType('voice')}
-                className={`flex-1 ${
-                  selectedFormType === 'voice' 
-                    ? 'bg-gray-800 text-white hover:bg-gray-700' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Voice
-              </Button>
-              <Button
-                variant={selectedFormType === 'mcq' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedFormType('mcq')}
-                className={`flex-1 ${
-                  selectedFormType === 'mcq' 
-                    ? 'bg-gray-800 text-white hover:bg-gray-700' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                MCQ Voice
-              </Button>
-              <Button
-                variant={selectedFormType === 'ranking' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedFormType('ranking')}
-                className={`flex-1 ${
-                  selectedFormType === 'ranking' 
-                    ? 'bg-gray-800 text-white hover:bg-gray-700' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Rank Voice
-              </Button>
-            </div>
-          </div>
-
           <div className="space-y-2">
             <label className="text-sm font-medium">Describe your form:</label>
             <div className="space-y-2">

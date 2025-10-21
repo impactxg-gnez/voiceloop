@@ -18,7 +18,7 @@ type Question = {
   id: number;
   value: string;
   qtype: 'voice' | 'mc' | 'ranking';
-  optionsText?: string; // comma or newline separated for mc/ranking
+  options?: string[]; // individual options for mc/ranking
 };
 
 type FormPage = {
@@ -40,7 +40,7 @@ export default function NewFormPage() {
   const { toast } = useToast();
   
   const [questions, setQuestions] = useState<Question[]>([
-    { id: Date.now(), value: '', qtype: 'voice', optionsText: '' }
+    { id: Date.now(), value: '', qtype: 'voice', options: [] }
   ]);
   const [formPages, setFormPages] = useState<FormPage[]>([]);
   const [demoFields, setDemoFields] = useState<DemographicField[]>([]);
@@ -50,7 +50,7 @@ export default function NewFormPage() {
 
 
   const addQuestion = () => {
-    setQuestions(prev => [...prev, { id: Date.now(), value: '', qtype: 'voice', optionsText: '' }]);
+    setQuestions(prev => [...prev, { id: Date.now(), value: '', qtype: 'voice', options: [] }]);
   };
 
   const removeQuestion = (id: number) => {
@@ -63,16 +63,45 @@ export default function NewFormPage() {
   const handleQuestionTypeChange = (id: number, qtype: 'voice' | 'mc' | 'ranking') => {
     setQuestions(prev => prev.map(q => (q.id === id ? { ...q, qtype } : q)));
   };
-  const handleQuestionOptionsChange = (id: number, optionsText: string) => {
-    setQuestions(prev => prev.map(q => (q.id === id ? { ...q, optionsText } : q)));
+  const handleQuestionOptionsChange = (id: number, options: string[]) => {
+    setQuestions(prev => prev.map(q => (q.id === id ? { ...q, options } : q)));
   };
 
-  const handleAISuggestions = (suggestions: string[]) => {
+  const addOption = (questionId: number) => {
+    setQuestions(prev => prev.map(q => 
+      q.id === questionId 
+        ? { ...q, options: [...(q.options || []), ''] }
+        : q
+    ));
+  };
+
+  const removeOption = (questionId: number, optionIndex: number) => {
+    setQuestions(prev => prev.map(q => 
+      q.id === questionId 
+        ? { ...q, options: (q.options || []).filter((_, index) => index !== optionIndex) }
+        : q
+    ));
+  };
+
+  const updateOption = (questionId: number, optionIndex: number, value: string) => {
+    setQuestions(prev => prev.map(q => 
+      q.id === questionId 
+        ? { 
+            ...q, 
+            options: (q.options || []).map((opt, index) => 
+              index === optionIndex ? value : opt
+            )
+          }
+        : q
+    ));
+  };
+
+  const handleAISuggestions = (suggestions: any[]) => {
     const newQuestions = suggestions.map((suggestion, index) => ({
       id: Date.now() + index,
-      value: suggestion,
-      qtype: 'voice' as const, // Default to voice, can be updated based on form type
-      optionsText: ''
+      value: suggestion.question || suggestion, // Handle both old and new formats
+      qtype: suggestion.type || 'voice',
+      options: suggestion.options || []
     }));
     setQuestions(prev => [...prev, ...newQuestions]);
   };
@@ -434,12 +463,46 @@ export default function NewFormPage() {
                       </div>
                       {(question.qtype === 'mc' || question.qtype === 'ranking') && (
                         <div className="md:col-span-2">
-                          <Label>Options ({question.qtype === 'mc' ? 'comma or newline separated' : 'drag order will be captured'})</Label>
-                          <Input
-                            placeholder={question.qtype === 'mc' ? 'A, B, C, D' : 'A, B, C, D'}
-                            value={question.optionsText || ''}
-                            onChange={(e) => handleQuestionOptionsChange(question.id, e.target.value)}
-                          />
+                          <div className="flex items-center justify-between mb-2">
+                            <Label>Options ({question.qtype === 'mc' ? 'multiple choice' : 'ranking order'})</Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => addOption(question.id)}
+                            >
+                              <PlusCircle className="h-4 w-4 mr-1" />
+                              Add Option
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            {(question.options || []).map((option, optionIndex) => (
+                              <div key={optionIndex} className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500 w-6">
+                                  {String.fromCharCode(65 + optionIndex)}.
+                                </span>
+                                <Input
+                                  placeholder={`Option ${optionIndex + 1}`}
+                                  value={option}
+                                  onChange={(e) => updateOption(question.id, optionIndex, e.target.value)}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeOption(question.id, optionIndex)}
+                                  disabled={(question.options || []).length <= 2}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                            {(!question.options || question.options.length === 0) && (
+                              <div className="text-sm text-gray-500 italic">
+                                Click "Add Option" to add choices
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
