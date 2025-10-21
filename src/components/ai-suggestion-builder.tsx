@@ -116,8 +116,19 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
       }
 
       const { suggestions: generatedSuggestions } = await response.json();
-      setSuggestions(generatedSuggestions);
-      onSuggestionsGenerated(generatedSuggestions);
+      
+      // Ensure we have a valid array
+      if (Array.isArray(generatedSuggestions)) {
+        setSuggestions(generatedSuggestions);
+        onSuggestionsGenerated(generatedSuggestions);
+      } else {
+        console.error('Invalid suggestions format:', generatedSuggestions);
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Response',
+          description: 'Received invalid suggestions format from server.',
+        });
+      }
       
       toast({
         title: 'Suggestions Generated!',
@@ -136,11 +147,13 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
   };
 
   const addSuggestion = (suggestion: string) => {
-    onSuggestionsGenerated([...suggestions, suggestion]);
+    if (suggestion && typeof suggestion === 'string') {
+      onSuggestionsGenerated([...(suggestions || []), suggestion]);
+    }
   };
 
   const removeSuggestion = (index: number) => {
-    const newSuggestions = suggestions.filter((_, i) => i !== index);
+    const newSuggestions = (suggestions || []).filter((_, i) => i !== index);
     setSuggestions(newSuggestions);
     onSuggestionsGenerated(newSuggestions);
   };

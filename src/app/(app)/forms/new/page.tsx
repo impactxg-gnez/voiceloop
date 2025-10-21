@@ -97,13 +97,36 @@ export default function NewFormPage() {
   };
 
   const handleAISuggestions = (suggestions: any[]) => {
-    const newQuestions = suggestions.map((suggestion, index) => ({
-      id: Date.now() + index,
-      value: suggestion.question || suggestion, // Handle both old and new formats
-      qtype: suggestion.type || 'voice',
-      options: suggestion.options || []
-    }));
-    setQuestions(prev => [...prev, ...newQuestions]);
+    try {
+      // Ensure suggestions is an array
+      if (!Array.isArray(suggestions)) {
+        console.error('AI suggestions is not an array:', suggestions);
+        return;
+      }
+
+      const newQuestions = suggestions.map((suggestion, index) => {
+        // Handle both old and new formats safely
+        const questionText = suggestion?.question || suggestion || '';
+        const questionType = suggestion?.type || 'voice';
+        const questionOptions = Array.isArray(suggestion?.options) ? suggestion.options : [];
+        
+        return {
+          id: Date.now() + index,
+          value: questionText,
+          qtype: questionType,
+          options: questionOptions
+        };
+      }).filter(q => q.value.trim() !== ''); // Filter out empty questions
+
+      setQuestions(prev => [...prev, ...newQuestions]);
+    } catch (error) {
+      console.error('Error processing AI suggestions:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error Processing Suggestions',
+        description: 'Could not process AI suggestions. Please try again.',
+      });
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
