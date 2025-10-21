@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { ai } from '@/ai/genkit';
-
-const FormSuggestionSchema = z.object({
-  suggestions: z.array(z.object({
-    question: z.string().describe('The question text'),
-    type: z.enum(['voice', 'mc', 'ranking']).describe('The recommended question type'),
-    options: z.array(z.string()).optional().describe('Options for MCQ or ranking questions')
-  })).describe('Array of suggested questions with their recommended types'),
-});
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,39 +12,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await ai.generateObject({
+    console.log('Generating suggestions for:', description);
+
+    // First try a simple text generation to test the connection
+    const result = await ai.generateText({
       model: 'googleai/gemini-2.0-flash-exp',
-      schema: FormSuggestionSchema,
-      prompt: `You are an expert form builder. Based on the following description, generate 5-8 relevant questions with the most appropriate question type for each.
-
-Description: "${description}"
-
-Guidelines for generating questions:
-1. Analyze the description and suggest the most appropriate question type for each question:
-   - VOICE: For open-ended questions that need detailed, qualitative responses
-   - MC: For questions with clear, limited answer choices (include 3-5 options)
-   - RANKING: For questions asking users to prioritize or rank items (include items to rank)
-2. Include questions about specific pain points or improvements
-3. Ask about user experience and satisfaction
-4. Include demographic or context questions when relevant
-5. Make questions clear and easy to understand
-6. Avoid leading or biased questions
-7. For MC and RANKING questions, provide appropriate options
-8. Focus on gathering valuable feedback for the described use case
-
-Generate questions that would be most valuable for the described purpose.`,
+      prompt: `Generate 5 customer feedback questions for: "${description}". 
+      
+      Return the questions as a simple list, one per line.`,
     });
 
+    console.log('AI Response:', result.text);
+
+    // Parse the response into individual questions
+    const questions = result.text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0 && line.match(/^\d+\./))
+      .map(line => line.replace(/^\d+\.\s*/, ''))
+      .slice(0, 8); // Limit to 8 questions
+
+    // Convert to the expected format
+    const suggestions = questions.map(question => ({
+      question,
+      type: 'voice' as const,
+      options: []
+    }));
+
     return NextResponse.json({
-      suggestions: result.object.suggestions,
+      suggestions,
     });
   } catch (error) {
     console.error('Error generating form suggestions:', error);
     console.error('Error details:', {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      description,
-      formType
+      description
     });
     return NextResponse.json(
       { 
