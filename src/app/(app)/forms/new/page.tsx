@@ -12,6 +12,7 @@ import { useSupabaseClient, useUser } from '@/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { FormPageManager } from '@/components/form-page-manager';
 import { DemographicsFieldsManager, type DemographicField } from '@/components/demographics-fields-manager';
+import { AISuggestionBuilder } from '@/components/ai-suggestion-builder';
 
 type Question = {
   id: number;
@@ -45,6 +46,7 @@ export default function NewFormPage() {
   const [demoFields, setDemoFields] = useState<DemographicField[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formTitle, setFormTitle] = useState('');
+  const [aiBuilderEnabled, setAiBuilderEnabled] = useState(false);
 
 
   const addQuestion = () => {
@@ -63,6 +65,16 @@ export default function NewFormPage() {
   };
   const handleQuestionOptionsChange = (id: number, optionsText: string) => {
     setQuestions(prev => prev.map(q => (q.id === id ? { ...q, optionsText } : q)));
+  };
+
+  const handleAISuggestions = (suggestions: string[]) => {
+    const newQuestions = suggestions.map((suggestion, index) => ({
+      id: Date.now() + index,
+      value: suggestion,
+      qtype: 'voice' as const, // Default to voice, can be updated based on form type
+      optionsText: ''
+    }));
+    setQuestions(prev => [...prev, ...newQuestions]);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -297,6 +309,13 @@ export default function NewFormPage() {
                   onChange={(e) => setFormTitle(e.target.value)}
                 />
               </div>
+
+              {/* AI Suggestion Builder */}
+              <AISuggestionBuilder
+                onSuggestionsGenerated={handleAISuggestions}
+                onToggle={setAiBuilderEnabled}
+                enabled={aiBuilderEnabled}
+              />
 
               {/* Demographics Fields Manager */}
               <DemographicsFieldsManager fields={demoFields} onChange={setDemoFields} />
