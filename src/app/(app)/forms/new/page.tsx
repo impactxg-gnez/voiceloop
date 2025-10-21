@@ -143,15 +143,15 @@ export default function NewFormPage() {
           form_id: formData.id,
           text: q.value,
           question_order: index,
-          // new fields if present in DB
-          ...(q.qtype ? { type: q.qtype } : {} as any),
-          ...(q.qtype !== 'voice' && q.optionsText
-            ? { options: (q.optionsText || '')
-                .split(/\n|,/)
-                .map(s => s.trim())
-                .filter(Boolean) }
-            : {} as any),
-        } as any));
+          // Note: type and options columns need to be added to database schema
+          // ...(q.qtype ? { type: q.qtype } : {} as any),
+          // ...(q.qtype !== 'voice' && q.optionsText
+          //   ? { options: (q.optionsText || '')
+          //       .split(/\n|,/)
+          //       .map(s => s.trim())
+          //       .filter(Boolean) }
+          //   : {} as any),
+        }));
 
       const { error: questionsError } = await supabase
         .from('questions')

@@ -170,3 +170,5 @@ export const useUser = (): UserHookResult => {
   const { user, session, isUserLoading, userError } = useSupabase();
   return { user, session, isUserLoading, userError };
 };
+
+
