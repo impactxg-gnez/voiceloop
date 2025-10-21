@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await ai.generateObject({
-      model: 'googleai/gemini-2.5-flash',
+      model: 'googleai/gemini-2.0-flash-exp',
       schema: FormSuggestionSchema,
       prompt: `You are an expert form builder. Based on the following description, generate 5-8 relevant questions with the most appropriate question type for each.
 
