@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateObject } from '@ai-sdk/google';
+import { generateObject } from 'ai';
 import { z } from 'zod';
 import { google } from '@ai-sdk/google';
 
