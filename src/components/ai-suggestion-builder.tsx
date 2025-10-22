@@ -10,11 +10,12 @@ import { useToast } from '@/hooks/use-toast';
 
 interface AISuggestionBuilderProps {
   onSuggestionsGenerated: (suggestions: any[]) => void;
+  onFormMetadataGenerated?: (title: string, description: string) => void;
   onToggle: (enabled: boolean) => void;
   enabled: boolean;
 }
 
-export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled }: AISuggestionBuilderProps) {
+export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGenerated, onToggle, enabled }: AISuggestionBuilderProps) {
   const [description, setDescription] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -23,6 +24,44 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
+
+  const generateFormTitle = (description: string): string => {
+    const desc = description.toLowerCase();
+    if (desc.includes('demographic') && desc.includes('name')) {
+      return 'Name Collection Form';
+    } else if (desc.includes('demographic')) {
+      return 'Demographic Information Form';
+    } else if (desc.includes('feedback')) {
+      return 'Customer Feedback Form';
+    } else if (desc.includes('survey')) {
+      return 'Survey Form';
+    } else if (desc.includes('hotel')) {
+      return 'Hotel Feedback Form';
+    } else if (desc.includes('restaurant')) {
+      return 'Restaurant Feedback Form';
+    } else {
+      return 'Voice Feedback Form';
+    }
+  };
+
+  const generateFormDescription = (description: string): string => {
+    const desc = description.toLowerCase();
+    if (desc.includes('demographic') && desc.includes('name')) {
+      return 'Please provide your name information';
+    } else if (desc.includes('demographic')) {
+      return 'Please provide your demographic information';
+    } else if (desc.includes('feedback')) {
+      return 'Please share your feedback and experience';
+    } else if (desc.includes('survey')) {
+      return 'Please answer the survey questions';
+    } else if (desc.includes('hotel')) {
+      return 'Please share your hotel experience';
+    } else if (desc.includes('restaurant')) {
+      return 'Please share your dining experience';
+    } else {
+      return 'Please provide your feedback';
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -153,21 +192,25 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
         throw new Error('Failed to generate suggestions');
       }
 
-      const { suggestions: generatedSuggestions } = await response.json();
+      const result = await response.json();
+      console.log('Received suggestions:', result);
       
-      console.log('Received suggestions:', generatedSuggestions);
-      console.log('Suggestions type:', typeof generatedSuggestions);
-      console.log('Is array:', Array.isArray(generatedSuggestions));
+      // Generate form metadata based on description
+      if (onFormMetadataGenerated) {
+        const formTitle = generateFormTitle(description);
+        const formDescription = generateFormDescription(description);
+        onFormMetadataGenerated(formTitle, formDescription);
+      }
       
       // Ensure we have a valid array
-      if (Array.isArray(generatedSuggestions)) {
-        console.log('Suggestions length:', generatedSuggestions.length);
-        console.log('First suggestion:', generatedSuggestions[0]);
+      if (Array.isArray(result.suggestions)) {
+        console.log('Suggestions length:', result.suggestions.length);
+        console.log('First suggestion:', result.suggestions[0]);
         
-        setSuggestions(generatedSuggestions);
-        onSuggestionsGenerated(generatedSuggestions);
+        setSuggestions(result.suggestions);
+        onSuggestionsGenerated(result.suggestions);
       } else {
-        console.error('Invalid suggestions format:', generatedSuggestions);
+        console.error('Invalid suggestions format:', result.suggestions);
         toast({
           variant: 'destructive',
           title: 'Invalid Response',
@@ -177,7 +220,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
       
       toast({
         title: 'Suggestions Generated!',
-        description: `Generated ${generatedSuggestions.length} question suggestions.`,
+        description: `Generated ${result.suggestions.length} question suggestions.`,
       });
     } catch (error) {
       console.error('Error generating suggestions:', error);

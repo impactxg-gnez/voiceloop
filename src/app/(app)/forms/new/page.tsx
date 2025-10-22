@@ -96,6 +96,12 @@ export default function NewFormPage() {
     ));
   };
 
+  const handleFormMetadataGenerated = (title: string, description: string) => {
+    setFormTitle(title);
+    // You could also set a form description if needed
+    console.log('Generated form metadata:', { title, description });
+  };
+
   const handleAISuggestions = (suggestions: any[]) => {
     try {
       // Ensure suggestions is an array
@@ -365,6 +371,7 @@ export default function NewFormPage() {
               {/* AI Suggestion Builder */}
               <AISuggestionBuilder
                 onSuggestionsGenerated={handleAISuggestions}
+                onFormMetadataGenerated={handleFormMetadataGenerated}
                 onToggle={setAiBuilderEnabled}
                 enabled={aiBuilderEnabled}
               />
