@@ -39,6 +39,28 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const { data: configuredFields } = useCollection<any>('form_demographic_fields', '*', { form_id: formId });
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
 
+  // Generate dynamic content based on configured fields
+  const generateDynamicContent = () => {
+    if (!configuredFields || configuredFields.length === 0) {
+      return {
+        title: 'Demographic Collection',
+        description: 'Please provide your demographic information',
+        prompt: 'Please tell us your demographic information. You can switch to text if you prefer.'
+      };
+    }
+
+    const fieldLabels = configuredFields.map((f: any) => f.label.toLowerCase());
+    const fieldNames = fieldLabels.join(', ');
+    
+    return {
+      title: `${fieldLabels.map((l: string) => l.charAt(0).toUpperCase() + l.slice(1)).join(', ')} Collection`,
+      description: `Please provide your ${fieldNames} information`,
+      prompt: `Please tell us your ${fieldNames}. You can switch to text if you prefer.`
+    };
+  };
+
+  const dynamicContent = generateDynamicContent();
+
   // TTS welcome prompt (single play unless user presses Replay)
   const speak = (message: string) => {
     try {
@@ -53,12 +75,12 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   useEffect(() => {
     if (!hasSpokenRef.current) {
       hasSpokenRef.current = true;
-      speak('Please tell us your age, city and gender. You can switch to text if you prefer.');
+      speak(dynamicContent.prompt);
     }
     return () => {
       try { window.speechSynthesis.cancel(); } catch {}
     };
-  }, []);
+  }, [dynamicContent.prompt]);
 
   const startRecording = async () => {
     try {
@@ -207,8 +229,8 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
     <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Demographic Collection</CardTitle>
-          <CardDescription>Speak out your Age, City, Gender etc</CardDescription>
+          <CardTitle>{dynamicContent.title}</CardTitle>
+          <CardDescription>{dynamicContent.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex justify-center">
@@ -243,7 +265,7 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
             <Button variant="outline" onClick={() => { try { window.speechSynthesis.cancel(); } catch {}; if (isRecording) stopRecording(); setMode(mode === 'voice' ? 'text' : 'voice'); }}>
               Switch to {mode === 'voice' ? 'text' : 'voice'}
             </Button>
-            <Button variant="ghost" onClick={() => speak('Please tell us your age, city and gender. You can switch to text if you prefer.')} disabled={isSpeaking}>
+            <Button variant="ghost" onClick={() => speak(dynamicContent.prompt)} disabled={isSpeaking}>
               Replay prompt
             </Button>
           </div>
@@ -251,7 +273,13 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
           {mode === 'text' && (
             <div className="space-y-2">
               <Label htmlFor="demo-text">Your demographics</Label>
-              <Textarea id="demo-text" rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g., I am 28, live in Austin, and identify as female." />
+              <Textarea 
+                id="demo-text" 
+                rows={3} 
+                value={text} 
+                onChange={(e) => setText(e.target.value)} 
+                placeholder={`e.g., ${configuredFields?.map((f: any) => `my ${f.label.toLowerCase()} is...`).join(', ') || 'provide your demographic information'}`} 
+              />
             </div>
           )}
 
