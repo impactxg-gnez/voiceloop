@@ -72,16 +72,36 @@ export async function POST(request: NextRequest) {
       .map(line => line.trim())
       .filter(line => line.length > 0 && (line.match(/^\d+\./) || line.match(/^[•\-\*]/)))
       .map(line => line.replace(/^[\d\.\•\-\*]\s*/, ''))
+      .filter(q => q.length > 0) // Remove empty questions
       .slice(0, 8); // Limit to 8 questions
 
     console.log('Parsed questions:', questions);
+    console.log('Question count:', questions.length);
+
+    // If no questions were parsed, try a different approach
+    if (questions.length === 0) {
+      console.log('No questions parsed, trying alternative parsing...');
+      const altQuestions = result.text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 10) // Questions should be reasonably long
+        .slice(0, 8);
+      
+      console.log('Alternative questions:', altQuestions);
+      
+      if (altQuestions.length > 0) {
+        questions.push(...altQuestions);
+      }
+    }
 
     // Convert to the expected format
     const suggestions = questions.map(question => ({
-      question,
+      question: question.trim(),
       type: 'voice' as const,
       options: []
-    }));
+    })).filter(s => s.question.length > 0);
+
+    console.log('Final suggestions:', suggestions);
 
     return NextResponse.json({
       suggestions,

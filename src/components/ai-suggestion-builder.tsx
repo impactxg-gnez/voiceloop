@@ -117,8 +117,15 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
 
       const { suggestions: generatedSuggestions } = await response.json();
       
+      console.log('Received suggestions:', generatedSuggestions);
+      console.log('Suggestions type:', typeof generatedSuggestions);
+      console.log('Is array:', Array.isArray(generatedSuggestions));
+      
       // Ensure we have a valid array
       if (Array.isArray(generatedSuggestions)) {
+        console.log('Suggestions length:', generatedSuggestions.length);
+        console.log('First suggestion:', generatedSuggestions[0]);
+        
         setSuggestions(generatedSuggestions);
         onSuggestionsGenerated(generatedSuggestions);
       } else {
@@ -268,6 +275,8 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
                   const suggestionText = typeof suggestion === 'string' 
                     ? suggestion 
                     : suggestion?.question || suggestion?.text || JSON.stringify(suggestion);
+                  
+                  console.log(`Suggestion ${index}:`, suggestion, 'Text:', suggestionText);
                   
                   return (
                     <div key={index} className="flex items-center gap-2 p-2 border rounded-md bg-gray-50">
