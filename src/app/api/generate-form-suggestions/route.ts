@@ -31,7 +31,14 @@ export async function POST(request: NextRequest) {
         console.log(`Trying model: ${model}`);
         result = await ai.generateText({
           model: model,
-          prompt: `Generate 5 customer feedback questions for: "${description}". 
+          prompt: `Analyze this form request: "${description}"
+
+          Generate ONLY the specific questions requested. If the user asks for:
+          - "demographic form with only name" → Generate only name-related questions
+          - "customer feedback" → Generate feedback questions
+          - "survey about restaurants" → Generate restaurant survey questions
+          
+          Be precise and only include what's specifically requested. Don't add extra fields.
           
           Return the questions as a simple numbered list, one per line.`,
         });
@@ -46,14 +53,33 @@ export async function POST(request: NextRequest) {
 
     if (!result) {
       console.log('All AI models failed, using fallback suggestions');
-      // Fallback suggestions based on description keywords
-      const fallbackSuggestions = [
-        "What did you like most about your experience?",
-        "What could we improve?",
-        "How would you rate your overall satisfaction?",
-        "Would you recommend us to others?",
-        "Any additional comments or feedback?"
-      ];
+      
+      // Context-aware fallback suggestions based on description
+      let fallbackSuggestions;
+      
+      if (description.toLowerCase().includes('demographic') && description.toLowerCase().includes('name')) {
+        fallbackSuggestions = [
+          "What is your full name?",
+          "What is your first name?",
+          "What is your last name?"
+        ];
+      } else if (description.toLowerCase().includes('feedback') || description.toLowerCase().includes('review')) {
+        fallbackSuggestions = [
+          "What did you like most about your experience?",
+          "What could we improve?",
+          "How would you rate your overall satisfaction?",
+          "Would you recommend us to others?",
+          "Any additional comments or feedback?"
+        ];
+      } else {
+        fallbackSuggestions = [
+          "What is your main concern?",
+          "How can we help you?",
+          "What information do you need?",
+          "What would you like to know?",
+          "Any additional comments?"
+        ];
+      }
       
       return NextResponse.json({
         suggestions: fallbackSuggestions.map(question => ({
