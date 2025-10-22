@@ -27,9 +27,30 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
 
   const generateFormTitle = (description: string): string => {
     const desc = description.toLowerCase();
-    if (desc.includes('demographic') && desc.includes('name')) {
-      return 'Name Collection Form';
-    } else if (desc.includes('demographic')) {
+    
+    // Extract specific fields mentioned
+    const fields = [];
+    if (desc.includes('name')) fields.push('Name');
+    if (desc.includes('age')) fields.push('Age');
+    if (desc.includes('city')) fields.push('City');
+    if (desc.includes('gender')) fields.push('Gender');
+    if (desc.includes('email')) fields.push('Email');
+    if (desc.includes('phone')) fields.push('Phone');
+    if (desc.includes('address')) fields.push('Address');
+    
+    // Generate title based on extracted fields
+    if (fields.length > 0) {
+      if (fields.length === 1) {
+        return `${fields[0]} Collection Form`;
+      } else if (fields.length <= 3) {
+        return `${fields.join(', ')} Collection Form`;
+      } else {
+        return 'Demographic Information Form';
+      }
+    }
+    
+    // Fallback based on context
+    if (desc.includes('demographic')) {
       return 'Demographic Information Form';
     } else if (desc.includes('feedback')) {
       return 'Customer Feedback Form';
@@ -46,9 +67,30 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
 
   const generateFormDescription = (description: string): string => {
     const desc = description.toLowerCase();
-    if (desc.includes('demographic') && desc.includes('name')) {
-      return 'Please provide your name information';
-    } else if (desc.includes('demographic')) {
+    
+    // Extract specific fields mentioned
+    const fields = [];
+    if (desc.includes('name')) fields.push('name');
+    if (desc.includes('age')) fields.push('age');
+    if (desc.includes('city')) fields.push('city');
+    if (desc.includes('gender')) fields.push('gender');
+    if (desc.includes('email')) fields.push('email');
+    if (desc.includes('phone')) fields.push('phone');
+    if (desc.includes('address')) fields.push('address');
+    
+    // Generate description based on extracted fields
+    if (fields.length > 0) {
+      if (fields.length === 1) {
+        return `Please provide your ${fields[0]} information`;
+      } else if (fields.length <= 3) {
+        return `Please provide your ${fields.join(', ')} information`;
+      } else {
+        return 'Please provide your demographic information';
+      }
+    }
+    
+    // Fallback based on context
+    if (desc.includes('demographic')) {
       return 'Please provide your demographic information';
     } else if (desc.includes('feedback')) {
       return 'Please share your feedback and experience';

@@ -33,12 +33,16 @@ export async function POST(request: NextRequest) {
           model: model,
           prompt: `Analyze this form request: "${description}"
 
-          Generate ONLY the specific questions requested. If the user asks for:
-          - "demographic form with only name" → Generate only name-related questions
-          - "customer feedback" → Generate feedback questions
-          - "survey about restaurants" → Generate restaurant survey questions
+          Generate ONLY the specific questions requested. Be precise and follow the user's exact requirements.
           
-          Be precise and only include what's specifically requested. Don't add extra fields.
+          If the user asks for:
+          - "demographic form with only name" → Generate only name-related questions
+          - "demographic form with age and city" → Generate only age and city questions
+          - "demographic form with name, age, gender" → Generate only name, age, gender questions
+          - "customer feedback about restaurants" → Generate restaurant feedback questions
+          
+          Extract the specific fields/topics the user mentions and generate questions ONLY for those.
+          Don't add extra fields that weren't requested.
           
           Return the questions as a simple numbered list, one per line.`,
         });
@@ -54,31 +58,52 @@ export async function POST(request: NextRequest) {
     if (!result) {
       console.log('All AI models failed, using fallback suggestions');
       
-      // Context-aware fallback suggestions based on description
-      let fallbackSuggestions;
+      // Dynamic fallback suggestions based on description content
+      const desc = description.toLowerCase();
+      let fallbackSuggestions = [];
       
-      if (description.toLowerCase().includes('demographic') && description.toLowerCase().includes('name')) {
-        fallbackSuggestions = [
-          "What is your full name?",
-          "What is your first name?",
-          "What is your last name?"
-        ];
-      } else if (description.toLowerCase().includes('feedback') || description.toLowerCase().includes('review')) {
-        fallbackSuggestions = [
-          "What did you like most about your experience?",
-          "What could we improve?",
-          "How would you rate your overall satisfaction?",
-          "Would you recommend us to others?",
-          "Any additional comments or feedback?"
-        ];
-      } else {
-        fallbackSuggestions = [
-          "What is your main concern?",
-          "How can we help you?",
-          "What information do you need?",
-          "What would you like to know?",
-          "Any additional comments?"
-        ];
+      // Extract specific fields mentioned in the description
+      if (desc.includes('name')) {
+        fallbackSuggestions.push("What is your full name?");
+      }
+      if (desc.includes('age')) {
+        fallbackSuggestions.push("What is your age?");
+      }
+      if (desc.includes('city')) {
+        fallbackSuggestions.push("What city do you live in?");
+      }
+      if (desc.includes('gender')) {
+        fallbackSuggestions.push("What is your gender?");
+      }
+      if (desc.includes('email')) {
+        fallbackSuggestions.push("What is your email address?");
+      }
+      if (desc.includes('phone')) {
+        fallbackSuggestions.push("What is your phone number?");
+      }
+      if (desc.includes('address')) {
+        fallbackSuggestions.push("What is your address?");
+      }
+      
+      // If no specific fields found, use generic suggestions
+      if (fallbackSuggestions.length === 0) {
+        if (desc.includes('feedback') || desc.includes('review')) {
+          fallbackSuggestions = [
+            "What did you like most about your experience?",
+            "What could we improve?",
+            "How would you rate your overall satisfaction?",
+            "Would you recommend us to others?",
+            "Any additional comments or feedback?"
+          ];
+        } else {
+          fallbackSuggestions = [
+            "What is your main concern?",
+            "How can we help you?",
+            "What information do you need?",
+            "What would you like to know?",
+            "Any additional comments?"
+          ];
+        }
       }
       
       return NextResponse.json({
