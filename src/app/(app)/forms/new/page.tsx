@@ -135,6 +135,49 @@ export default function NewFormPage() {
     }
   };
 
+  const handleAISuggestionsWithDemographics = (suggestions: any[], description: string) => {
+    try {
+      // Process questions first
+      handleAISuggestions(suggestions);
+
+      // Extract demographic fields from description
+      const desc = description.toLowerCase();
+      const demographicFields: DemographicField[] = [];
+
+      // Map common demographic terms to field configurations
+      const fieldMappings = {
+        'name': { field_key: 'name', label: 'Name', input_type: 'text' as const },
+        'age': { field_key: 'age', label: 'Age', input_type: 'number' as const },
+        'city': { field_key: 'city', label: 'City', input_type: 'text' as const },
+        'gender': { field_key: 'gender', label: 'Gender', input_type: 'select' as const, options: ['Male', 'Female', 'Other'] },
+        'email': { field_key: 'email', label: 'Email', input_type: 'text' as const },
+        'phone': { field_key: 'phone', label: 'Phone', input_type: 'text' as const },
+        'address': { field_key: 'address', label: 'Address', input_type: 'text' as const }
+      };
+
+      // Check which fields are mentioned in the description
+      Object.entries(fieldMappings).forEach(([key, config]) => {
+        if (desc.includes(key)) {
+          demographicFields.push({
+            field_key: config.field_key,
+            label: config.label,
+            input_type: config.input_type,
+            required: true,
+            options: config.options || []
+          });
+        }
+      });
+
+      // Set demographic fields if any were found
+      if (demographicFields.length > 0) {
+        setDemoFields(demographicFields);
+        console.log('Generated demographic fields:', demographicFields);
+      }
+    } catch (error) {
+      console.error('Error processing AI suggestions with demographics:', error);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user || !supabase) {

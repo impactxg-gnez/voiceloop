@@ -36,12 +36,18 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const recordStartRef = useRef<number | null>(null);
   const [hasVoiceInput, setHasVoiceInput] = useState(false);
   const hasSpokenRef = useRef(false);
-  const { data: configuredFields } = useCollection<any>('form_demographic_fields', '*', { form_id: formId });
+  const { data: configuredFields, loading: fieldsLoading } = useCollection<any>('form_demographic_fields', '*', { form_id: formId });
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+
+  // Debug logging
+  console.log('DemographicsCapture - formId:', formId);
+  console.log('DemographicsCapture - configuredFields:', configuredFields);
+  console.log('DemographicsCapture - fieldsLoading:', fieldsLoading);
 
   // Generate dynamic content based on configured fields
   const generateDynamicContent = () => {
     if (!configuredFields || configuredFields.length === 0) {
+      console.log('No configured fields found, using fallback content');
       return {
         title: 'Demographic Collection',
         description: 'Please provide your demographic information',
@@ -224,6 +230,20 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
 
   const hasAnyFieldValue = Object.values(fieldValues).some(v => String(v || '').trim().length > 0);
   const canSubmit = (mode === 'text' && (text.trim().length > 0 || hasAnyFieldValue)) || (mode === 'voice' && (text.trim().length > 0 || !!audioUrl || hasVoiceInput));
+
+  // Show loading state while fields are being loaded
+  if (fieldsLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <span className="ml-2">Loading demographic fields...</span>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
