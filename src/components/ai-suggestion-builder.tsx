@@ -9,7 +9,7 @@ import { Mic, MicOff, Loader2, Sparkles, CheckCircle, Trash2 } from 'lucide-reac
 import { useToast } from '@/hooks/use-toast';
 
 interface AISuggestionBuilderProps {
-  onSuggestionsGenerated: (suggestions: string[]) => void;
+  onSuggestionsGenerated: (suggestions: any[]) => void;
   onToggle: (enabled: boolean) => void;
   enabled: boolean;
 }
@@ -18,7 +18,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
   const [description, setDescription] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -161,7 +161,12 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
         : suggestion?.question || suggestion?.text || '';
       
       if (suggestionText && typeof suggestionText === 'string') {
-        onSuggestionsGenerated([...(suggestions || []), suggestionText]);
+        // Convert to object format for consistency
+        const suggestionObj = typeof suggestion === 'string' 
+          ? { question: suggestion, type: 'voice', options: [] }
+          : suggestion;
+        
+        onSuggestionsGenerated([...(suggestions || []), suggestionObj]);
       }
     } catch (error) {
       console.error('Error adding suggestion:', error);
@@ -274,17 +279,34 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
                   // Handle both string and object formats
                   const suggestionText = typeof suggestion === 'string' 
                     ? suggestion 
-                    : suggestion?.question || suggestion?.text || JSON.stringify(suggestion);
+                    : suggestion?.question || suggestion?.text || '';
                   
                   console.log(`Suggestion ${index}:`, suggestion, 'Text:', suggestionText);
                   
+                  // Don't render if no text
+                  if (!suggestionText || suggestionText.trim() === '') {
+                    return null;
+                  }
+                  
                   return (
-                    <div key={index} className="flex items-center gap-2 p-2 border rounded-md bg-gray-50">
-                      <span className="flex-1 text-sm">{suggestionText}</span>
+                    <div key={index} className="flex items-center gap-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-800">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {suggestionText}
+                        </p>
+                        {suggestion?.type && (
+                          <Badge variant="secondary" className="mt-1 text-xs">
+                            {suggestion.type === 'voice' ? 'Voice' : 
+                             suggestion.type === 'mc' ? 'Multiple Choice' : 
+                             suggestion.type === 'ranking' ? 'Ranking' : suggestion.type}
+                          </Badge>
+                        )}
+                      </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => addSuggestion(suggestionText)}
+                        onClick={() => addSuggestion(suggestion)}
+                        className="text-green-600 hover:text-green-700"
                       >
                         <CheckCircle className="h-4 w-4" />
                       </Button>
@@ -292,6 +314,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
                         variant="ghost"
                         size="sm"
                         onClick={() => removeSuggestion(index)}
+                        className="text-red-600 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
