@@ -44,6 +44,26 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   console.log('DemographicsCapture - configuredFields:', configuredFields);
   console.log('DemographicsCapture - fieldsLoading:', fieldsLoading);
 
+  // Debug function to check database
+  const debugDemographics = async () => {
+    try {
+      const response = await fetch(`/api/debug-demographics?formId=${formId}`);
+      const data = await response.json();
+      console.log('Debug demographics result:', data);
+      toast({
+        title: 'Debug Info',
+        description: `Found ${data.fieldsCount} demographic fields for form ${formId}`,
+      });
+    } catch (error) {
+      console.error('Debug error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Debug Error',
+        description: 'Could not fetch debug info',
+      });
+    }
+  };
+
   // Generate dynamic content based on configured fields
   const generateDynamicContent = () => {
     if (!configuredFields || configuredFields.length === 0) {
@@ -287,6 +307,9 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
             </Button>
             <Button variant="ghost" onClick={() => speak(dynamicContent.prompt)} disabled={isSpeaking}>
               Replay prompt
+            </Button>
+            <Button variant="outline" onClick={debugDemographics} size="sm">
+              Debug
             </Button>
           </div>
 
