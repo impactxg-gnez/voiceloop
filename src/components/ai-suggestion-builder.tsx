@@ -26,22 +26,40 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      console.log('Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        } 
+      });
+      
+      console.log('Microphone access granted, setting up MediaRecorder...');
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (event) => {
+        console.log('Audio data available, size:', event.data.size);
         audioChunksRef.current.push(event.data);
       };
 
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        console.log('Recording stopped, processing audio...');
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log('Created audio blob:', {
+          size: audioBlob.size,
+          type: audioBlob.type
+        });
         await transcribeAudio(audioBlob);
         stream.getTracks().forEach(track => track.stop());
       };
 
-      mediaRecorderRef.current.start();
+      mediaRecorderRef.current.start(1000); // Collect data every second
       setIsRecording(true);
+      console.log('Recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
@@ -62,27 +80,47 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
   const transcribeAudio = async (audioBlob: Blob) => {
     try {
       setIsGenerating(true);
-      const formData = new FormData();
-      formData.append('audio', audioBlob);
+      console.log('Starting transcription with audio blob:', {
+        size: audioBlob.size,
+        type: audioBlob.type
+      });
 
-      const response = await fetch('/api/transcribe', {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.wav');
+
+      console.log('Sending to transcription API...');
+      const response = await fetch('/api/test-transcribe', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Transcription response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Transcription failed');
+        const errorData = await response.json();
+        console.error('Transcription failed:', errorData);
+        throw new Error(`Transcription failed: ${errorData.error || 'Unknown error'}`);
       }
 
-      const { transcription } = await response.json();
-      setDescription(transcription);
-      setIsVoiceMode(false);
+      const result = await response.json();
+      console.log('Transcription result:', result);
+      
+      if (result.transcription) {
+        setDescription(result.transcription);
+        setIsVoiceMode(false);
+        toast({
+          title: 'Transcription Complete',
+          description: 'Audio has been transcribed successfully.',
+        });
+      } else {
+        throw new Error('No transcription received');
+      }
     } catch (error) {
       console.error('Transcription error:', error);
       toast({
         variant: 'destructive',
         title: 'Transcription Error',
-        description: 'Could not transcribe audio. Please try again.',
+        description: `Could not transcribe audio: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     } finally {
       setIsGenerating(false);
