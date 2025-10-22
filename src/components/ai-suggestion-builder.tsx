@@ -146,9 +146,18 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
     }
   };
 
-  const addSuggestion = (suggestion: string) => {
-    if (suggestion && typeof suggestion === 'string') {
-      onSuggestionsGenerated([...(suggestions || []), suggestion]);
+  const addSuggestion = (suggestion: any) => {
+    try {
+      // Handle both string and object formats
+      const suggestionText = typeof suggestion === 'string' 
+        ? suggestion 
+        : suggestion?.question || suggestion?.text || '';
+      
+      if (suggestionText && typeof suggestionText === 'string') {
+        onSuggestionsGenerated([...(suggestions || []), suggestionText]);
+      }
+    } catch (error) {
+      console.error('Error adding suggestion:', error);
     }
   };
 
@@ -254,25 +263,32 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onToggle, enabled 
             <div className="space-y-2">
               <label className="text-sm font-medium">Generated Suggestions:</label>
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {suggestions.map((suggestion, index) => (
-                  <div key={index} className="flex items-center gap-2 p-2 border rounded-md bg-gray-50">
-                    <span className="flex-1 text-sm">{suggestion}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => addSuggestion(suggestion)}
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeSuggestion(index)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                {suggestions.map((suggestion, index) => {
+                  // Handle both string and object formats
+                  const suggestionText = typeof suggestion === 'string' 
+                    ? suggestion 
+                    : suggestion?.question || suggestion?.text || JSON.stringify(suggestion);
+                  
+                  return (
+                    <div key={index} className="flex items-center gap-2 p-2 border rounded-md bg-gray-50">
+                      <span className="flex-1 text-sm">{suggestionText}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => addSuggestion(suggestionText)}
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeSuggestion(index)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
