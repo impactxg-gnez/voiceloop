@@ -12,3 +12,4 @@ CREATE INDEX IF NOT EXISTS idx_questions_type ON questions(type);
 
 -- Update existing questions to have default type
 UPDATE questions SET type = 'voice' WHERE type IS NULL;
+
