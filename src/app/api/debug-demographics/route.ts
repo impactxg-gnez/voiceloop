@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -13,6 +9,16 @@ export async function GET(request: NextRequest) {
     if (!formId) {
       return NextResponse.json({ error: 'formId is required' }, { status: 400 });
     }
+
+    // Initialize Supabase client inside function
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     console.log('Debug demographics - formId:', formId);
     console.log('Environment variables check:');

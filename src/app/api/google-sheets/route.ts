@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { googleSheetsService } from '@/lib/google-sheets';
 import { createClient } from '@supabase/supabase-js';
+
+// Lazy import of Google Sheets service to avoid build-time initialization
+const getGoogleSheetsService = async () => {
+  const { googleSheetsService } = await import('@/lib/google-sheets');
+  return googleSheetsService;
+};
 
 // Initialize Supabase client inside functions to avoid build-time errors
 const getSupabaseClient = () => {
@@ -56,6 +61,9 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Get Google Sheets service
+    const googleSheetsService = await getGoogleSheetsService();
 
     // Parse the transcription to extract structured data
     const parsedData = googleSheetsService.parseTranscription(transcription);
