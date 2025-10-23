@@ -48,6 +48,10 @@ export async function POST(request: NextRequest) {
     const audioBlob = new Blob([audioBuffer], { type: audioFile.type || 'audio/webm' });
 
     console.log('Sending audio to Whisper for transcription...');
+    console.log('Audio blob details:', {
+      size: audioBlob.size,
+      type: audioBlob.type
+    });
 
     // Use Whisper for transcription
     console.log('Calling Whisper API...');
@@ -57,14 +61,25 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('Whisper transcription successful:', transcription.text);
+    console.log('Transcription response:', {
+      text: transcription.text,
+      duration: transcription.duration,
+      language: transcription.language
+    });
     return NextResponse.json({
       transcription: transcription.text,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error transcribing audio with Whisper:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      status: error?.status,
+      code: error?.code,
+      type: error?.type
+    });
     
     // Check if it's an API key error
-    if (error?.message?.includes('API key')) {
+    if (error?.message?.includes('API key') || error?.message?.includes('authentication') || error?.status === 401) {
       return NextResponse.json({
         transcription: 'Mock transcription - Invalid OpenAI API key. Please check your OPENAI_API_KEY in Vercel.',
         error: 'Invalid OpenAI API key',
@@ -72,8 +87,17 @@ export async function POST(request: NextRequest) {
       });
     }
     
+    // Check if it's a quota/billing error
+    if (error?.message?.includes('quota') || error?.message?.includes('billing') || error?.status === 429) {
+      return NextResponse.json({
+        transcription: 'Mock transcription - OpenAI quota exceeded. Please check your billing.',
+        error: 'OpenAI quota exceeded',
+        details: error?.message
+      });
+    }
+    
     // Check if it's a network error
-    if (error?.message?.includes('fetch') || error?.message?.includes('network')) {
+    if (error?.message?.includes('fetch') || error?.message?.includes('network') || error?.code === 'ENOTFOUND') {
       return NextResponse.json({
         transcription: 'Mock transcription - Network error. Please check your internet connection.',
         error: 'Network error',
@@ -81,14 +105,13 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Return mock transcription as fallback
-    const mockTranscription = 'Mock transcription - Whisper service unavailable';
-    console.log('Returning mock transcription for testing');
-    
+    // For other errors, return the actual error details for debugging
     return NextResponse.json({
-      transcription: mockTranscription,
-      error: 'Whisper service unavailable, using mock response',
-      details: error?.message
+      transcription: `Mock transcription - Error: ${error?.message || 'Unknown error'}`,
+      error: 'Whisper transcription failed',
+      details: error?.message,
+      errorType: error?.constructor?.name,
+      status: error?.status
     });
   }
 }
