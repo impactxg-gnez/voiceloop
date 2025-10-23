@@ -472,7 +472,33 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           .update({ transcription: transcriptionText })
           .eq('id', inserted.id);
 
-        setDebugText(`Transcription complete: "${transcriptionText}"`);
+        // 3) Send to Google Sheets for structured data extraction
+        try {
+          const sheetsResponse = await fetch('/api/google-sheets', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              formId: formId,
+              transcription: transcriptionText,
+              questionText: questions[questionIndex].text,
+            }),
+          });
+
+          if (sheetsResponse.ok) {
+            const sheetsData = await sheetsResponse.json();
+            console.log('Google Sheets response:', sheetsData);
+            setDebugText(`Transcription complete: "${transcriptionText}" | Added to Google Sheets`);
+          } else {
+            console.error('Google Sheets error:', await sheetsResponse.text());
+            setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets failed`);
+          }
+        } catch (sheetsError) {
+          console.error('Error sending to Google Sheets:', sheetsError);
+          setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets error`);
+        }
+
         toast({
           title: 'Feedback Submitted!',
           description: `Transcription: "${transcriptionText}"`,

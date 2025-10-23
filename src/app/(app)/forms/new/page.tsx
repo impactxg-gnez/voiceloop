@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { FormPageManager } from '@/components/form-page-manager';
 import { DemographicsFieldsManager, type DemographicField } from '@/components/demographics-fields-manager';
 import { AISuggestionBuilder } from '@/components/ai-suggestion-builder';
+import { GoogleSheetsInfo } from '@/components/google-sheets-info';
 
 type Question = {
   id: number;
@@ -48,6 +49,7 @@ export default function NewFormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formTitle, setFormTitle] = useState('');
   const [aiBuilderEnabled, setAiBuilderEnabled] = useState(false);
+  const [createdFormId, setCreatedFormId] = useState<string | null>(null);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -295,9 +297,14 @@ export default function NewFormPage() {
       }
 
       toast({ title: 'Form published!', description: 'Your new form is live.' });
-      // Show share link
-      navigator.clipboard?.writeText(`${window.location.origin}/forms/record/${formData.id}`).catch(() => {});
-      router.push(`/forms/record/${formData.id}`);
+      // Set the created form ID to show Google Sheets info
+      setCreatedFormId(formData.id);
+      
+      // Show success message
+      toast({
+        title: 'Form Created Successfully!',
+        description: 'Your form is ready. Google Sheets integration is set up automatically.',
+      });
 
     } catch (error: any) {
       console.error('Error creating form:', error);
@@ -610,6 +617,13 @@ export default function NewFormPage() {
             </form>
           </CardContent>
         </Card>
+
+        {/* Google Sheets Integration Info */}
+        {createdFormId && (
+          <div className="max-w-2xl mx-auto mt-6">
+            <GoogleSheetsInfo formId={createdFormId} />
+          </div>
+        )}
       </main>
     </div>
   );
