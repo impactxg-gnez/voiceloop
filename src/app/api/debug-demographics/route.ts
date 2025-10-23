@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -10,60 +14,45 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'formId is required' }, { status: 400 });
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    console.log('Debug demographics - formId:', formId);
 
-    // Check if form exists
-    const { data: form, error: formError } = await supabase
-      .from('forms')
-      .select('*')
-      .eq('id', formId)
-      .single();
-
-    if (formError) {
-      return NextResponse.json({ 
-        error: 'Form not found', 
-        details: formError.message,
-        formId 
-      }, { status: 404 });
-    }
-
-    // Check demographic fields
+    // Query the form_demographic_fields table
     const { data: fields, error: fieldsError } = await supabase
       .from('form_demographic_fields')
       .select('*')
       .eq('form_id', formId);
 
     if (fieldsError) {
-      return NextResponse.json({ 
-        error: 'Error fetching fields', 
-        details: fieldsError.message,
-        formId 
-      }, { status: 500 });
+      console.error('Error querying form_demographic_fields:', fieldsError);
+      return NextResponse.json({ error: fieldsError.message }, { status: 500 });
     }
+
+    // Also check if the form exists
+    const { data: form, error: formError } = await supabase
+      .from('forms')
+      .select('id, title, created_at')
+      .eq('id', formId)
+      .single();
+
+    if (formError) {
+      console.error('Error querying forms:', formError);
+    }
+
+    console.log('Debug demographics - fields found:', fields?.length || 0);
+    console.log('Debug demographics - fields data:', fields);
+    console.log('Debug demographics - form data:', form);
 
     return NextResponse.json({
       formId,
-      form: {
-        id: form.id,
-        title: form.title,
-        owner_uid: form.owner_uid
-      },
-      demographicFields: fields || [],
-      fieldsCount: fields?.length || 0
+      fieldsCount: fields?.length || 0,
+      fields: fields || [],
+      form: form || null,
+      formExists: !!form,
+      message: `Found ${fields?.length || 0} demographic fields for form ${formId}`
     });
 
   } catch (error) {
     console.error('Debug demographics error:', error);
-    return NextResponse.json(
-      { 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

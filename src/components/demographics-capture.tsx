@@ -296,21 +296,25 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
             <canvas ref={canvasRef} width={320} height={60} className="w-full rounded bg-muted" />
           )}
 
-          <div className="flex justify-center gap-2">
-            {isRecording ? (
-              <Button onClick={stopRecording}>Stop</Button>
-            ) : (
-              <Button onClick={startRecording}>Start</Button>
-            )}
-            <Button variant="outline" onClick={() => { try { window.speechSynthesis.cancel(); } catch {}; if (isRecording) stopRecording(); setMode(mode === 'voice' ? 'text' : 'voice'); }}>
-              Switch to {mode === 'voice' ? 'text' : 'voice'}
-            </Button>
-            <Button variant="ghost" onClick={() => speak(dynamicContent.prompt)} disabled={isSpeaking}>
-              Replay prompt
-            </Button>
-            <Button variant="outline" onClick={debugDemographics} size="sm">
-              Debug
-            </Button>
+          <div className="space-y-2">
+            <div className="flex justify-center gap-2">
+              {isRecording ? (
+                <Button onClick={stopRecording}>Stop</Button>
+              ) : (
+                <Button onClick={startRecording}>Start</Button>
+              )}
+              <Button variant="outline" onClick={() => { try { window.speechSynthesis.cancel(); } catch {}; if (isRecording) stopRecording(); setMode(mode === 'voice' ? 'text' : 'voice'); }}>
+                Switch to {mode === 'voice' ? 'text' : 'voice'}
+              </Button>
+              <Button variant="ghost" onClick={() => speak(dynamicContent.prompt)} disabled={isSpeaking}>
+                Replay prompt
+              </Button>
+            </div>
+            <div className="flex justify-center">
+              <Button variant="destructive" onClick={debugDemographics} size="sm">
+                🔍 Debug Fields ({configuredFields?.length || 0})
+              </Button>
+            </div>
           </div>
 
           {mode === 'text' && (
