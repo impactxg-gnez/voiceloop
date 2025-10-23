@@ -1,5 +1,4 @@
-import { generateText } from 'ai';
-import { google } from '@ai-sdk/google';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
@@ -10,17 +9,18 @@ if (!apiKey) {
   console.error('No Google AI API key found in environment variables');
 }
 
-// Create a simple AI object that matches the expected interface
+// Create a simple AI object that matches the expected interface using direct Google AI
 export const ai = {
   generateText: async (options: any) => {
     try {
-      const result = await generateText({
-        model: google('gemini-pro', {
-          apiKey: apiKey
-        }),
-        prompt: options.prompt,
-      });
-      return result;
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      
+      const result = await model.generateContent(options.prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      return { text };
     } catch (error) {
       console.error('AI generateText error:', error);
       throw error;
