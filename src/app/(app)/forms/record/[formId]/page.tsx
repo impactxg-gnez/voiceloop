@@ -61,6 +61,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const [activeRecordingIndex, setActiveRecordingIndex] = useState<number | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [debugText, setDebugText] = useState('');
+  const [microphoneReady, setMicrophoneReady] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -128,6 +129,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         };
         
         setMediaRecorder(recorder);
+        setMicrophoneReady(true);
         console.log('MediaRecorder set in state');
 
         if (audioContextRef.current && stream.getAudioTracks().length > 0) {
@@ -377,12 +379,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
             title: "Recording in Progress",
             description: "Please stop the current recording before starting a new one.",
         });
-    } else if (!mediaRecorder) {
+    } else if (!mediaRecorder || !microphoneReady) {
         console.log('MediaRecorder not set up, calling setupMediaRecorder...');
         setDebugText('Setting up microphone...');
         setupMediaRecorder().then(() => {
           console.log('MediaRecorder setup complete');
-          toast({ title: 'Preparing recorder, please try again.' });
+          toast({ title: 'Microphone ready! Please try recording again.' });
+        }).catch((error) => {
+          console.error('MediaRecorder setup failed:', error);
+          setDebugText(`Setup failed: ${error.message}`);
         });
     } else {
         console.log('Missing required components for recording');
@@ -579,10 +584,33 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                     </div>
 
                     <div className="flex flex-col items-center gap-4">
+                        {!microphoneReady && (
+                            <div className="mb-4">
+                                <Button 
+                                    onClick={() => {
+                                        console.log('Manual microphone setup triggered');
+                                        setDebugText('Setting up microphone manually...');
+                                        setupMediaRecorder().then(() => {
+                                            console.log('Manual setup completed');
+                                            toast({ title: 'Microphone ready! You can now record.' });
+                                        }).catch((error) => {
+                                            console.error('Manual setup failed:', error);
+                                            setDebugText(`Setup failed: ${error.message}`);
+                                        });
+                                    }}
+                                    variant="outline"
+                                    className="mb-2"
+                                >
+                                    <Mic className="w-4 h-4 mr-2" />
+                                    Setup Microphone
+                                </Button>
+                                <p className="text-sm text-muted-foreground">Click to enable microphone access</p>
+                            </div>
+                        )}
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => isRecordingThis ? stopRecording(currentQuestionIndex) : startRecording(currentQuestionIndex)}
-                                disabled={isRecordingAnother || currentQuestionState.isSubmitted}
+                                disabled={isRecordingAnother || currentQuestionState.isSubmitted || !microphoneReady}
                                 className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                 isRecordingThis ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
                                 }`}
