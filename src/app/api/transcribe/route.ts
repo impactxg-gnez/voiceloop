@@ -45,18 +45,18 @@ export async function POST(request: NextRequest) {
 
     // Convert audio file to buffer for Whisper
     const audioBuffer = await audioFile.arrayBuffer();
-    const audioBlob = new Blob([audioBuffer], { type: audioFile.type || 'audio/webm' });
-
+    
     console.log('Sending audio to Whisper for transcription...');
-    console.log('Audio blob details:', {
-      size: audioBlob.size,
-      type: audioBlob.type
+    console.log('Audio file details:', {
+      name: audioFile.name,
+      size: audioFile.size,
+      type: audioFile.type
     });
 
-    // Use Whisper for transcription
+    // Use Whisper for transcription - pass the File directly
     console.log('Calling Whisper API...');
     const transcription = await openai.audio.transcriptions.create({
-      file: audioBlob as any,
+      file: audioFile, // Use the original File object, not a Blob
       model: "whisper-1",
     });
 
