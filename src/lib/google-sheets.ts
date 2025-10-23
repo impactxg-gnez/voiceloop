@@ -16,6 +16,12 @@ class GoogleSheetsService {
   private sheets: any;
 
   constructor() {
+    // Check if credentials are available
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
+      console.log('Google Sheets credentials not configured');
+      return;
+    }
+
     // Initialize Google Sheets API with service account
     this.auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -98,6 +104,10 @@ class GoogleSheetsService {
    * Create or get a Google Sheet for a form
    */
   async createOrGetSheet(formId: string, formTitle: string): Promise<SheetConfig> {
+    if (!this.sheets) {
+      throw new Error('Google Sheets API not initialized. Please configure credentials.');
+    }
+    
     try {
       // Check if sheet already exists for this form
       const existingSheet = await this.findSheetByFormId(formId);
@@ -162,6 +172,10 @@ class GoogleSheetsService {
    * Add response data to Google Sheet
    */
   async addResponse(sheetConfig: SheetConfig, parsedData: ParsedResponse, timestamp: string = new Date().toISOString()) {
+    if (!this.sheets) {
+      throw new Error('Google Sheets API not initialized. Please configure credentials.');
+    }
+    
     try {
       const { spreadsheetId, sheetName } = sheetConfig;
 

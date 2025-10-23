@@ -3,7 +3,7 @@ import { googleSheetsService } from '@/lib/google-sheets';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(request: NextRequest) {
@@ -15,6 +15,16 @@ export async function POST(request: NextRequest) {
         { error: 'Form ID and transcription are required' },
         { status: 400 }
       );
+    }
+
+    // Check if Google Sheets credentials are configured
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
+      console.log('Google Sheets credentials not configured, skipping sheet integration');
+      return NextResponse.json({
+        success: false,
+        error: 'Google Sheets integration not configured',
+        message: 'Please configure GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY in Vercel environment variables'
+      });
     }
 
     console.log('Processing transcription for Google Sheets:', {
