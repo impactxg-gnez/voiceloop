@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, CheckCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export type DemographicField = {
   id?: string;
@@ -23,8 +24,10 @@ interface Props {
 }
 
 export function DemographicsFieldsManager({ fields, onChange }: Props) {
+  const { toast } = useToast();
   console.log('DemographicsFieldsManager - received fields:', fields);
   console.log('DemographicsFieldsManager - fields.length:', fields.length);
+  
   const [newField, setNewField] = useState<DemographicField>({
     field_key: '',
     label: '',
@@ -55,83 +58,108 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
     onChange(copy);
   };
 
+  const confirmFields = () => {
+    console.log('Confirming demographic fields:', fields);
+    toast({
+      title: 'Demographic Fields Confirmed',
+      description: `Successfully configured ${fields.length} demographic field${fields.length !== 1 ? 's' : ''}`,
+    });
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Demographics (Optional)</CardTitle>
-        <CardDescription>Define the demographic fields you want to collect</CardDescription>
+        <CardDescription>Add the demographic fields you want to collect from users</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {fields.map((f, idx) => (
-          <div key={idx} className="grid gap-3 md:grid-cols-5 items-end">
-            <div className="md:col-span-1">
-              <Label>Key</Label>
-              <Input value={f.field_key} onChange={(e) => updateField(idx, { field_key: e.target.value })} placeholder="age" />
-            </div>
-            <div className="md:col-span-2">
-              <Label>Label</Label>
-              <Input value={f.label} onChange={(e) => updateField(idx, { label: e.target.value })} placeholder="Age" />
-            </div>
-            <div>
-              <Label>Type</Label>
-              <select className="w-full border rounded h-9 px-2" value={f.input_type} onChange={(e) => updateField(idx, { input_type: e.target.value as any })}>
-                <option value="text">Text</option>
-                <option value="number">Number</option>
-                <option value="select">Select</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={f.required} onCheckedChange={(v) => updateField(idx, { required: v })} />
-              <Label>Required</Label>
-            </div>
-            {f.input_type === 'select' && (
-              <div className="md:col-span-5">
-                <Label>Options (comma separated)</Label>
-                <Input value={(f.options || []).join(', ')} onChange={(e) => updateField(idx, { options: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="Male, Female, Other" />
+        {/* Current Fields */}
+        {fields.length > 0 && (
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Configured Fields ({fields.length})</Label>
+            {fields.map((f, idx) => (
+              <div key={idx} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+                <div className="flex-1">
+                  <div className="font-medium">{f.label}</div>
+                  <div className="text-sm text-gray-500">Key: {f.field_key} • Type: {f.input_type} • {f.required ? 'Required' : 'Optional'}</div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => removeField(idx)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-            )}
-            <div className="md:col-span-5 flex justify-end">
-              <Button variant="ghost" onClick={() => removeField(idx)}>
-                <Trash2 className="h-4 w-4 mr-1" /> Remove
-              </Button>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
 
+        {/* Add New Field */}
         <div className="border-t pt-4 space-y-3">
-          <div className="grid gap-3 md:grid-cols-5 items-end">
-            <div className="md:col-span-1">
+          <Label className="text-sm font-medium">Add New Field</Label>
+          <div className="grid gap-3 md:grid-cols-4 items-end">
+            <div>
               <Label>Key</Label>
-              <Input value={newField.field_key} onChange={(e) => setNewField({ ...newField, field_key: e.target.value })} placeholder="city" />
+              <Input 
+                value={newField.field_key} 
+                onChange={(e) => setNewField({ ...newField, field_key: e.target.value })} 
+                placeholder="city" 
+              />
             </div>
-            <div className="md:col-span-2">
+            <div>
               <Label>Label</Label>
-              <Input value={newField.label} onChange={(e) => setNewField({ ...newField, label: e.target.value })} placeholder="City" />
+              <Input 
+                value={newField.label} 
+                onChange={(e) => setNewField({ ...newField, label: e.target.value })} 
+                placeholder="City" 
+              />
             </div>
             <div>
               <Label>Type</Label>
-              <select className="w-full border rounded h-9 px-2" value={newField.input_type} onChange={(e) => setNewField({ ...newField, input_type: e.target.value as any })}>
+              <select 
+                className="w-full border rounded h-9 px-2" 
+                value={newField.input_type} 
+                onChange={(e) => setNewField({ ...newField, input_type: e.target.value as any })}
+              >
                 <option value="text">Text</option>
                 <option value="number">Number</option>
                 <option value="select">Select</option>
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <Switch checked={newField.required} onCheckedChange={(v) => setNewField({ ...newField, required: v })} />
+              <Switch 
+                checked={newField.required} 
+                onCheckedChange={(v) => setNewField({ ...newField, required: v })} 
+              />
               <Label>Required</Label>
             </div>
-            {newField.input_type === 'select' && (
-              <div className="md:col-span-5">
-                <Label>Options (comma separated)</Label>
-                <Input value={(newField.options || []).join(', ')} onChange={(e) => setNewField({ ...newField, options: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} placeholder="Male, Female, Other" />
-              </div>
-            )}
           </div>
-          <div className="flex justify-end gap-2">
-            <Button onClick={addField}><Plus className="h-4 w-4 mr-1" /> Add Field</Button>
-            <Button variant="outline" onClick={() => console.log('Current fields:', fields)}>
-              Confirm Fields ({fields.length})
+          
+          {newField.input_type === 'select' && (
+            <div>
+              <Label>Options (comma separated)</Label>
+              <Input 
+                value={(newField.options || []).join(', ')} 
+                onChange={(e) => setNewField({ ...newField, options: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} 
+                placeholder="Male, Female, Other" 
+              />
+            </div>
+          )}
+
+          <div className="flex justify-between items-center">
+            <Button 
+              onClick={addField}
+              disabled={!newField.field_key || !newField.label}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" /> Add Field
             </Button>
+            
+            {fields.length > 0 && (
+              <Button 
+                onClick={confirmFields}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle className="h-4 w-4" /> Confirm Fields ({fields.length})
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
