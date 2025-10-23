@@ -28,6 +28,7 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
   console.log('DemographicsFieldsManager - received fields:', fields);
   console.log('DemographicsFieldsManager - fields.length:', fields.length);
   
+  const [pendingFields, setPendingFields] = useState<DemographicField[]>([]);
   const [newField, setNewField] = useState<DemographicField>({
     field_key: '',
     label: '',
@@ -36,14 +37,19 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
     options: [],
   });
 
-  const addField = () => {
+  const addToPending = () => {
     if (!newField.field_key || !newField.label) return;
-    console.log('Adding demographic field:', newField);
-    console.log('Current fields before add:', fields);
-    const updatedFields = [...fields, { ...newField }];
-    console.log('Updated fields after add:', updatedFields);
-    onChange(updatedFields);
+    console.log('Adding field to pending:', newField);
+    const updatedPending = [...pendingFields, { ...newField }];
+    console.log('Updated pending fields:', updatedPending);
+    setPendingFields(updatedPending);
     setNewField({ field_key: '', label: '', input_type: 'text', required: true, options: [] });
+  };
+
+  const removePendingField = (idx: number) => {
+    const copy = [...pendingFields];
+    copy.splice(idx, 1);
+    setPendingFields(copy);
   };
 
   const removeField = (idx: number) => {
@@ -52,17 +58,14 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
     onChange(copy);
   };
 
-  const updateField = (idx: number, patch: Partial<DemographicField>) => {
-    const copy = [...fields];
-    copy[idx] = { ...copy[idx], ...patch };
-    onChange(copy);
-  };
-
   const confirmFields = () => {
-    console.log('Confirming demographic fields:', fields);
+    const allFields = [...fields, ...pendingFields];
+    console.log('Confirming all demographic fields:', allFields);
+    onChange(allFields);
+    setPendingFields([]);
     toast({
       title: 'Demographic Fields Confirmed',
-      description: `Successfully configured ${fields.length} demographic field${fields.length !== 1 ? 's' : ''}`,
+      description: `Successfully configured ${allFields.length} demographic field${allFields.length !== 1 ? 's' : ''}`,
     });
   };
 
@@ -73,12 +76,12 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
         <CardDescription>Add the demographic fields you want to collect from users</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Current Fields */}
+        {/* Confirmed Fields */}
         {fields.length > 0 && (
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Configured Fields ({fields.length})</Label>
+            <Label className="text-sm font-medium">Confirmed Fields ({fields.length})</Label>
             {fields.map((f, idx) => (
-              <div key={idx} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800">
+              <div key={idx} className="flex items-center gap-3 p-3 border rounded-lg bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
                 <div className="flex-1">
                   <div className="font-medium">{f.label}</div>
                   <div className="text-sm text-gray-500">Key: {f.field_key} • Type: {f.input_type} • {f.required ? 'Required' : 'Optional'}</div>
@@ -91,9 +94,27 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
           </div>
         )}
 
+        {/* Pending Fields */}
+        {pendingFields.length > 0 && (
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Pending Fields ({pendingFields.length})</Label>
+            {pendingFields.map((f, idx) => (
+              <div key={idx} className="flex items-center gap-3 p-3 border rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
+                <div className="flex-1">
+                  <div className="font-medium">{f.label}</div>
+                  <div className="text-sm text-gray-500">Key: {f.field_key} • Type: {f.input_type} • {f.required ? 'Required' : 'Optional'}</div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => removePendingField(idx)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Add New Field */}
         <div className="border-t pt-4 space-y-3">
-          <Label className="text-sm font-medium">Add New Field</Label>
+          <Label className="text-sm font-medium">Add Field</Label>
           <div className="grid gap-3 md:grid-cols-4 items-end">
             <div>
               <Label>Key</Label>
@@ -145,19 +166,19 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
 
           <div className="flex justify-between items-center">
             <Button 
-              onClick={addField}
+              onClick={addToPending}
               disabled={!newField.field_key || !newField.label}
               className="flex items-center gap-2"
             >
-              <Plus className="h-4 w-4" /> Add Field
+              <Plus className="h-4 w-4" /> Add to List
             </Button>
             
-            {fields.length > 0 && (
+            {(fields.length > 0 || pendingFields.length > 0) && (
               <Button 
                 onClick={confirmFields}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
               >
-                <CheckCircle className="h-4 w-4" /> Confirm Fields ({fields.length})
+                <CheckCircle className="h-4 w-4" /> Confirm All Fields ({fields.length + pendingFields.length})
               </Button>
             )}
           </div>
