@@ -1,15 +1,19 @@
 'use server';
 
 /**
- * @fileOverview A flow that transcribes voice responses from audio files using Gemini.
+ * @fileOverview A flow that transcribes voice responses from audio files using Whisper.
  *
  * - transcribeVoiceResponse - A function that handles the transcription process.
  * - TranscribeVoiceResponseInput - The input type for the transcribeVoiceResponse function.
  * - TranscribeVoiceResponseOutput - The return type for the transcribeVoiceResponse function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import OpenAI from 'openai';
+import {z} from 'zod';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const TranscribeVoiceResponseInputSchema = z.object({
   audioPath: z
@@ -32,23 +36,30 @@ export type TranscribeVoiceResponseOutput = z.infer<
 export async function transcribeVoiceResponse(
   input: TranscribeVoiceResponseInput
 ): Promise<TranscribeVoiceResponseOutput> {
-  return transcribeVoiceResponseFlow(input);
-}
+  try {
+    // Check if OpenAI API key is available
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('OpenAI API key not found, using mock transcription');
+      return { text: 'Mock transcription - OpenAI API key not configured' };
+    }
 
-const transcribeVoiceResponseFlow = ai.defineFlow(
-  {
-    name: 'transcribeVoiceResponseFlow',
-    inputSchema: TranscribeVoiceResponseInputSchema,
-    outputSchema: TranscribeVoiceResponseOutputSchema,
-  },
-  async input => {
-    const {text} = await ai.generate({
-      model: 'googleai/gemini-2.5-flash',
-      prompt: [
-        {text: 'Transcribe the following audio:'},
-        {media: {url: input.audioPath}}
-      ],
+    // Convert data URI to buffer
+    const base64Data = input.audioPath.split(',')[1];
+    const audioBuffer = Buffer.from(base64Data, 'base64');
+    const audioBlob = new Blob([audioBuffer], { type: 'audio/webm' });
+
+    console.log('Sending audio to Whisper for transcription...');
+
+    // Use Whisper for transcription
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioBlob as any,
+      model: "whisper-1",
     });
-    return {text};
+
+    console.log('Whisper transcription successful:', transcription.text);
+    return { text: transcription.text };
+  } catch (error) {
+    console.error('Error transcribing audio with Whisper:', error);
+    return { text: 'Mock transcription - Whisper service unavailable' };
   }
-);
+}

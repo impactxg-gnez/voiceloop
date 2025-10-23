@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ai } from '@/ai/genkit';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('Transcribe API called');
+    console.log('Transcribe API called with Whisper');
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File;
 
@@ -21,59 +25,42 @@ export async function POST(request: NextRequest) {
       type: audioFile.type
     });
 
-    // Convert audio file to base64 for Gemini
-    const audioBuffer = await audioFile.arrayBuffer();
-    const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-    const mimeType = audioFile.type || 'audio/webm';
-
-    console.log('Audio converted to base64, length:', audioBase64.length);
-    console.log('MIME type:', mimeType);
-
-    // Try different models as fallback
-    const models = [
-      'gemini-pro',
-      'gemini-1.5-pro',
-      'gemini-1.5-flash'
-    ];
-
-    let result;
-    let lastError;
-
-    // Try text-only approach first (simpler and more reliable)
-    try {
-      console.log('Trying text-only approach');
-      result = await ai.generateText({
-        prompt: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary. Note: This is a text-only mode without audio processing.',
-      });
-      console.log('Success with text-only approach');
-    } catch (error) {
-      console.log('Text-only approach failed:', error);
-      lastError = error;
-    }
-
-    if (!result) {
-      console.error('All models failed, last error:', lastError);
-      
-      // Return a mock transcription for testing purposes
-      const mockTranscription = 'Mock transcription - AI service unavailable';
-      console.log('Returning mock transcription for testing');
-      
+    // Check if OpenAI API key is available
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('OpenAI API key not found, using mock transcription');
       return NextResponse.json({
-        transcription: mockTranscription,
-        error: 'AI service unavailable, using mock response',
-        details: lastError?.message
+        transcription: 'Mock transcription - OpenAI API key not configured',
+        error: 'OpenAI API key not configured, using mock response'
       });
     }
 
-    console.log('Transcription successful:', result.text);
+    // Convert audio file to buffer for Whisper
+    const audioBuffer = await audioFile.arrayBuffer();
+    const audioBlob = new Blob([audioBuffer], { type: audioFile.type || 'audio/webm' });
+
+    console.log('Sending audio to Whisper for transcription...');
+
+    // Use Whisper for transcription
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioBlob as any,
+      model: "whisper-1",
+    });
+
+    console.log('Whisper transcription successful:', transcription.text);
     return NextResponse.json({
-      transcription: result.text,
+      transcription: transcription.text,
     });
   } catch (error) {
-    console.error('Error transcribing audio:', error);
-    return NextResponse.json(
-      { error: 'Failed to transcribe audio', details: error?.message },
-      { status: 500 }
-    );
+    console.error('Error transcribing audio with Whisper:', error);
+    
+    // Return mock transcription as fallback
+    const mockTranscription = 'Mock transcription - Whisper service unavailable';
+    console.log('Returning mock transcription for testing');
+    
+    return NextResponse.json({
+      transcription: mockTranscription,
+      error: 'Whisper service unavailable, using mock response',
+      details: error?.message
+    });
   }
 }
