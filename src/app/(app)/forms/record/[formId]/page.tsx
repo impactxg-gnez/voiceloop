@@ -88,11 +88,18 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   }, [questions]);
 
   const setupMediaRecorder = async () => {
+    console.log('Setting up MediaRecorder...');
     if (typeof window !== 'undefined' && 'MediaRecorder' in window) {
       try {
+        console.log('Requesting microphone access...');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('Microphone access granted, stream:', stream);
+        
         const recorder = new MediaRecorder(stream);
+        console.log('MediaRecorder created:', recorder);
+        
         recorder.ondataavailable = (event) => {
+            console.log('Audio data available:', event.data.size, 'bytes');
             if (activeRecordingIndex !== null) {
               setQuestionStates(prev => {
                 const currentQuestionState = prev[activeRecordingIndex!];
@@ -107,23 +114,47 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
               });
             }
         };
+        
+        recorder.onstart = () => {
+          console.log('MediaRecorder started');
+        };
+        
+        recorder.onstop = () => {
+          console.log('MediaRecorder stopped');
+        };
+        
+        recorder.onerror = (event) => {
+          console.error('MediaRecorder error:', event);
+        };
+        
         setMediaRecorder(recorder);
+        console.log('MediaRecorder set in state');
 
         if (audioContextRef.current && stream.getAudioTracks().length > 0) {
             if (audioStreamSourceRef.current) {
                 audioStreamSourceRef.current.disconnect();
             }
             audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
+            console.log('Audio context source created');
         }
 
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error accessing microphone:', err);
+        setDebugText(`Microphone error: ${err.message}`);
         toast({
           variant: 'destructive',
           title: 'Microphone Access Denied',
-          description: 'Please allow microphone access in your browser settings to record audio.',
+          description: `Please allow microphone access in your browser settings to record audio. Error: ${err.message}`,
         });
       }
+    } else {
+      console.error('MediaRecorder not supported in this browser');
+      setDebugText('MediaRecorder not supported in this browser');
+      toast({
+        variant: 'destructive',
+        title: 'Recording Not Supported',
+        description: 'Your browser does not support audio recording. Please use a modern browser.',
+      });
     }
   };
 
@@ -271,8 +302,19 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
 
   const startRecording = (questionIndex: number) => {
+    console.log('startRecording called for question:', questionIndex);
+    console.log('Current state:', {
+      mediaRecorder: !!mediaRecorder,
+      activeRecordingIndex,
+      audioContext: !!audioContextRef.current,
+      audioStreamSource: !!audioStreamSourceRef.current
+    });
+    
     if (mediaRecorder && activeRecordingIndex === null && audioContextRef.current && audioStreamSourceRef.current) {
+        console.log('All conditions met, starting recording...');
+        
         if (audioContextRef.current.state === 'suspended') {
+            console.log('Resuming audio context...');
             audioContextRef.current.resume();
         }
 
@@ -298,16 +340,27 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           draw(analyser, canvas, questionIndex);
         }
 
+        console.log('Starting MediaRecorder...');
         mediaRecorder.start();
+        console.log('MediaRecorder.start() called');
 
     } else if (activeRecordingIndex !== null) {
+        console.log('Recording already in progress');
         toast({
             variant: "destructive",
             title: "Recording in Progress",
             description: "Please stop the current recording before starting a new one.",
         });
     } else if (!mediaRecorder) {
-        setupMediaRecorder().then(() => toast({ title: 'Preparing recorder, please try again.' }));
+        console.log('MediaRecorder not set up, calling setupMediaRecorder...');
+        setDebugText('Setting up microphone...');
+        setupMediaRecorder().then(() => {
+          console.log('MediaRecorder setup complete');
+          toast({ title: 'Preparing recorder, please try again.' });
+        });
+    } else {
+        console.log('Missing required components for recording');
+        setDebugText('Missing audio components - check browser console');
     }
   };
 
