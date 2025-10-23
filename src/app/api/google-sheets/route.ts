@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { googleSheetsService } from '@/lib/google-sheets';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Initialize Supabase client inside functions to avoid build-time errors
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Supabase configuration missing');
+  }
+  
+  return createClient(supabaseUrl, supabaseKey);
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +42,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get form details
+    const supabase = getSupabaseClient();
     const { data: form, error: formError } = await supabase
       .from('forms')
       .select('id, title')
@@ -103,6 +112,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get sheet mapping from database
+    const supabase = getSupabaseClient();
     const { data: mapping, error } = await supabase
       .from('form_sheet_mappings')
       .select('*')
