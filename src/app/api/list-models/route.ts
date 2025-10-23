@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
 
     // Try to create a simple model instance to test
     const model = google('gemini-1.0-pro', {
-      apiKey: apiKey
+      apiKey: apiKey,
+      apiVersion: 'v1'
     });
 
     return NextResponse.json({

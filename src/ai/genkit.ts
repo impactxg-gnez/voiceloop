@@ -16,7 +16,8 @@ export const ai = {
     try {
       const result = await generateText({
         model: google('gemini-1.0-pro', {
-          apiKey: apiKey
+          apiKey: apiKey,
+          apiVersion: 'v1'
         }),
         prompt: options.prompt,
       });
