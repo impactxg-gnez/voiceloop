@@ -20,9 +20,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Use Google Generative AI directly
-    const genAI = new GoogleGenerativeAI(apiKey);
+    const genAI = new GoogleGenerativeAI(apiKey, {
+      apiVersion: 'v1'
+    });
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-pro",
+      model: "gemini-pro",
       generationConfig: {
         temperature: 0.7,
       }
@@ -36,7 +38,7 @@ export async function GET(request: NextRequest) {
       success: true,
       message: 'Google AI direct connection working',
       result: text,
-      modelName: 'gemini-1.5-pro',
+      modelName: 'gemini-pro',
       apiKeyLength: apiKey.length
     });
   } catch (error) {

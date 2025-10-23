@@ -13,9 +13,11 @@ if (!apiKey) {
 export const ai = {
   generateText: async (options: any) => {
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
+      const genAI = new GoogleGenerativeAI(apiKey, {
+        apiVersion: 'v1'
+      });
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-pro",
+        model: "gemini-pro",
         generationConfig: {
           temperature: 0.7,
         }
