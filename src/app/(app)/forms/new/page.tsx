@@ -164,13 +164,18 @@ export default function NewFormPage() {
       // Check which fields are mentioned in the description
       Object.entries(fieldMappings).forEach(([key, config]) => {
         if (desc.includes(key)) {
-          demographicFields.push({
+          const field: DemographicField = {
             field_key: config.field_key,
             label: config.label,
             input_type: config.input_type,
-            required: true,
-            options: config.options || []
-          });
+            required: true
+          };
+          
+          if (config.input_type === 'select' && config.options) {
+            field.options = config.options;
+          }
+          
+          demographicFields.push(field);
         }
       });
 
