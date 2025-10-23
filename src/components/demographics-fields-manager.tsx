@@ -46,18 +46,17 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
     setNewField({ field_key: '', label: '', input_type: 'text', required: true, options: [] });
   };
 
-  // Auto-add to pending when both key and label are filled
   const handleFieldChange = (updates: Partial<DemographicField>) => {
-    const updatedField = { ...newField, ...updates };
-    setNewField(updatedField);
-    
-    // Auto-add to pending when both key and label are filled
-    if (updatedField.field_key && updatedField.label && 
-        !pendingFields.some(f => f.field_key === updatedField.field_key)) {
-      console.log('Auto-adding field to pending:', updatedField);
-      setPendingFields(prev => [...prev, updatedField]);
-      setNewField({ field_key: '', label: '', input_type: 'text', required: true, options: [] });
-    }
+    setNewField(prev => ({ ...prev, ...updates }));
+  };
+
+  const addField = () => {
+    if (!newField.field_key || !newField.label) return;
+    console.log('Adding field to pending:', newField);
+    const updatedPending = [...pendingFields, { ...newField }];
+    console.log('Updated pending fields:', updatedPending);
+    setPendingFields(updatedPending);
+    setNewField({ field_key: '', label: '', input_type: 'text', required: true, options: [] });
   };
 
   const removePendingField = (idx: number) => {
@@ -87,7 +86,7 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
     <Card>
       <CardHeader>
         <CardTitle>Demographics (Optional)</CardTitle>
-        <CardDescription>Fill out the fields below - they'll automatically be added to your pending list</CardDescription>
+        <CardDescription>Fill out the fields below and click "Add Field" to add them to your list</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Confirmed Fields */}
@@ -178,15 +177,22 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
             </div>
           )}
 
-          <div className="flex justify-end">
-            {(fields.length > 0 || pendingFields.length > 0) && (
-              <Button 
-                onClick={confirmFields}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
-              >
-                <CheckCircle className="h-4 w-4" /> Confirm All Fields ({fields.length + pendingFields.length})
-              </Button>
-            )}
+          <div className="flex justify-between items-center">
+            <Button 
+              onClick={addField}
+              disabled={!newField.field_key || !newField.label}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" /> Add Field
+            </Button>
+            
+            <Button 
+              onClick={confirmFields}
+              disabled={fields.length === 0 && pendingFields.length === 0}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+            >
+              <CheckCircle className="h-4 w-4" /> Confirm Fields ({fields.length + pendingFields.length})
+            </Button>
           </div>
         </div>
       </CardContent>
