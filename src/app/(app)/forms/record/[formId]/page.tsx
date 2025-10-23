@@ -60,6 +60,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const [questionStates, setQuestionStates] = useState<Record<number, QuestionState>>({});
   const [activeRecordingIndex, setActiveRecordingIndex] = useState<number | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [debugText, setDebugText] = useState('');
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -282,6 +283,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         const canvas = canvasRefs.current[questionIndex];
 
         setActiveRecordingIndex(questionIndex);
+        setDebugText(`Started recording for question ${questionIndex + 1}`);
         setQuestionStates(prev => ({
             ...prev,
             [questionIndex]: {
@@ -312,6 +314,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const stopRecording = (questionIndex: number) => {
     if (mediaRecorder && activeRecordingIndex === questionIndex) {
       mediaRecorder.stop();
+      setDebugText(`Stopped recording for question ${questionIndex + 1}. Processing audio...`);
 
       const state = questionStates[questionIndex];
       if (state.analyser && audioStreamSourceRef.current) {
@@ -351,6 +354,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
 
     setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: true } }));
+    setDebugText(`Transcribing audio for question ${questionIndex + 1}...`);
     
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     const reader = new FileReader();
@@ -382,6 +386,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           .update({ transcription: result.text || 'transcription unavailable' })
           .eq('id', inserted.id);
 
+        setDebugText(`Transcription complete: "${result.text}"`);
         toast({
           title: 'Feedback Submitted!',
           description: `Transcription: "${result.text}"`,
@@ -512,6 +517,11 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         <p className="text-sm text-muted-foreground h-5">
                             {isRecordingThis ? 'Recording...' : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
                         </p>
+                        {debugText && (
+                            <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded mt-2">
+                                <strong>Debug:</strong> {debugText}
+                            </div>
+                        )}
                     
                         {currentQuestionState.isSubmitted ? (
                             <div className="flex items-center gap-2 text-green-600">

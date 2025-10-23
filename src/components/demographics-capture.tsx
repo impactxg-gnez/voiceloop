@@ -38,6 +38,8 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const hasSpokenRef = useRef(false);
   const { data: configuredFields, loading: fieldsLoading } = useCollection<any>('form_demographic_fields', '*', { form_id: formId });
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [debugText, setDebugText] = useState('');
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   // Debug logging
   console.log('DemographicsCapture - formId:', formId);
@@ -123,6 +125,9 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
         setAudioUrl(url);
         recordStartRef.current = null;
         setRecordMs(0);
+        setIsProcessingVoice(true);
+        setDebugText('Processing voice input...');
+        
         // client-side speech-to-text via Web Speech API if available (improved final result handling)
         try {
           const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -138,11 +143,29 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
                 combined += event.results[i][0].transcript + ' ';
                 if (event.results[i].isFinal) finalText = combined;
               }
-              setText((finalText || combined).trim());
+              const transcribedText = (finalText || combined).trim();
+              setText(transcribedText);
+              setDebugText(`Voice transcribed: "${transcribedText}"`);
+            };
+            recognition.onend = () => {
+              setIsProcessingVoice(false);
+              if (!finalText) {
+                setDebugText('No speech detected in recording');
+              }
+            };
+            recognition.onerror = (event: any) => {
+              setIsProcessingVoice(false);
+              setDebugText(`Speech recognition error: ${event.error}`);
             };
             recognition.start();
+          } else {
+            setIsProcessingVoice(false);
+            setDebugText('Speech recognition not supported in this browser');
           }
-        } catch {}
+        } catch (error) {
+          setIsProcessingVoice(false);
+          setDebugText(`Speech recognition error: ${error}`);
+        }
         if (frameRef.current) cancelAnimationFrame(frameRef.current);
         try { audioCtxRef.current?.close(); } catch {}
         audioCtxRef.current = null;
@@ -286,6 +309,11 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
                   <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
                   Recording... {Math.floor(recordMs / 1000)}s
                 </span>
+              ) : isProcessingVoice ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processing voice...
+                </span>
               ) : (
                 <span>Press Start to begin. Press Stop to finish.</span>
               )}
@@ -293,7 +321,14 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
           )}
 
           {mode === 'voice' && (
-            <canvas ref={canvasRef} width={320} height={60} className="w-full rounded bg-muted" />
+            <div className="space-y-2">
+              <canvas ref={canvasRef} width={320} height={60} className="w-full rounded bg-muted border" />
+              {debugText && (
+                <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded">
+                  <strong>Debug:</strong> {debugText}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="space-y-2">
