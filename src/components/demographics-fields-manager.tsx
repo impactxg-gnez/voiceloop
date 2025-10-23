@@ -127,8 +127,11 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
               </div>
             )}
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
             <Button onClick={addField}><Plus className="h-4 w-4 mr-1" /> Add Field</Button>
+            <Button variant="outline" onClick={() => console.log('Current fields:', fields)}>
+              Confirm Fields ({fields.length})
+            </Button>
           </div>
         </div>
       </CardContent>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,9 +44,15 @@ export default function NewFormPage() {
   ]);
   const [formPages, setFormPages] = useState<FormPage[]>([]);
   const [demoFields, setDemoFields] = useState<DemographicField[]>([]);
+  const demoFieldsRef = useRef<DemographicField[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formTitle, setFormTitle] = useState('');
   const [aiBuilderEnabled, setAiBuilderEnabled] = useState(false);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    demoFieldsRef.current = demoFields;
+  }, [demoFields]);
 
 
   const addQuestion = () => {
@@ -217,10 +223,10 @@ export default function NewFormPage() {
       }
 
       // Insert demographic fields if any
-      console.log('Form submission - demoFields:', demoFields);
-      console.log('Form submission - demoFields.length:', demoFields.length);
-      if (demoFields.length > 0) {
-        const fieldsData = demoFields.map(f => ({
+      console.log('Form submission - demoFields (from ref):', demoFieldsRef.current);
+      console.log('Form submission - demoFields.length (from ref):', demoFieldsRef.current.length);
+      if (demoFieldsRef.current.length > 0) {
+        const fieldsData = demoFieldsRef.current.map(f => ({
           form_id: formData.id,
           field_key: f.field_key,
           label: f.label,
