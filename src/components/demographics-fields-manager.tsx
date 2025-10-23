@@ -82,6 +82,9 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
     });
   };
 
+  console.log('Rendering DemographicsFieldsManager - fields:', fields.length, 'pending:', pendingFields.length);
+  console.log('newField:', newField);
+
   return (
     <Card>
       <CardHeader>
@@ -177,7 +180,7 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
             </div>
           )}
 
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center gap-4">
             <Button 
               onClick={addField}
               disabled={!newField.field_key || !newField.label}
@@ -186,13 +189,14 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
               <Plus className="h-4 w-4" /> Add Field
             </Button>
             
-            <Button 
-              onClick={confirmFields}
-              disabled={fields.length === 0 && pendingFields.length === 0}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
-            >
-              <CheckCircle className="h-4 w-4" /> Confirm Fields ({fields.length + pendingFields.length})
-            </Button>
+            {(fields.length > 0 || pendingFields.length > 0) && (
+              <Button 
+                onClick={confirmFields}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle className="h-4 w-4" /> Confirm Fields ({fields.length + pendingFields.length})
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
