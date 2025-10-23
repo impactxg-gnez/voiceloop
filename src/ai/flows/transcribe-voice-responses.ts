@@ -11,9 +11,15 @@
 import OpenAI from 'openai';
 import {z} from 'zod';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI client only when needed
+const getOpenAI = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    return null;
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+};
 
 const TranscribeVoiceResponseInputSchema = z.object({
   audioPath: z
@@ -38,7 +44,8 @@ export async function transcribeVoiceResponse(
 ): Promise<TranscribeVoiceResponseOutput> {
   try {
     // Check if OpenAI API key is available
-    if (!process.env.OPENAI_API_KEY) {
+    const openai = getOpenAI();
+    if (!openai) {
       console.log('OpenAI API key not found, using mock transcription');
       return { text: 'Mock transcription - OpenAI API key not configured' };
     }

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI client only when needed
+const getOpenAI = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    return null;
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +32,8 @@ export async function POST(request: NextRequest) {
     });
 
     // Check if OpenAI API key is available
-    if (!process.env.OPENAI_API_KEY) {
+    const openai = getOpenAI();
+    if (!openai) {
       console.log('OpenAI API key not found, using mock transcription');
       return NextResponse.json({
         transcription: 'Mock transcription - OpenAI API key not configured. Please add OPENAI_API_KEY to Vercel environment variables.',
