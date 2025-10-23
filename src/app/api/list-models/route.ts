@@ -20,14 +20,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Try to create a simple model instance to test
-    const model = google('models/gemini-1.5-pro', {
+    const model = google('gemini-1.0-pro', {
       apiKey: apiKey
     });
 
     return NextResponse.json({
       success: true,
       message: 'Model created successfully',
-      modelName: 'models/gemini-1.5-pro',
+      modelName: 'gemini-1.0-pro',
       apiKeyLength: apiKey.length
     });
   } catch (error) {
