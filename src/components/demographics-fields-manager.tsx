@@ -23,6 +23,8 @@ interface Props {
 }
 
 export function DemographicsFieldsManager({ fields, onChange }: Props) {
+  console.log('DemographicsFieldsManager - received fields:', fields);
+  console.log('DemographicsFieldsManager - fields.length:', fields.length);
   const [newField, setNewField] = useState<DemographicField>({
     field_key: '',
     label: '',
@@ -33,7 +35,11 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
 
   const addField = () => {
     if (!newField.field_key || !newField.label) return;
-    onChange([...fields, { ...newField }]);
+    console.log('Adding demographic field:', newField);
+    console.log('Current fields before add:', fields);
+    const updatedFields = [...fields, { ...newField }];
+    console.log('Updated fields after add:', updatedFields);
+    onChange(updatedFields);
     setNewField({ field_key: '', label: '', input_type: 'text', required: true, options: [] });
   };
 
