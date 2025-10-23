@@ -131,11 +131,32 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         console.log('MediaRecorder set in state');
 
         if (audioContextRef.current && stream.getAudioTracks().length > 0) {
+            console.log('Creating audio stream source...');
+            console.log('Audio context state before resume:', audioContextRef.current.state);
+            
+            // Ensure audio context is running
+            if (audioContextRef.current.state === 'suspended') {
+                console.log('Resuming audio context...');
+                await audioContextRef.current.resume();
+                console.log('Audio context state after resume:', audioContextRef.current.state);
+            }
+            
             if (audioStreamSourceRef.current) {
                 audioStreamSourceRef.current.disconnect();
             }
-            audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-            console.log('Audio context source created');
+            try {
+                audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
+                console.log('Audio context source created successfully:', audioStreamSourceRef.current);
+            } catch (error) {
+                console.error('Error creating audio stream source:', error);
+                setDebugText(`Audio stream source error: ${error}`);
+            }
+        } else {
+            console.log('Cannot create audio stream source:', {
+                hasAudioContext: !!audioContextRef.current,
+                audioTracks: stream.getAudioTracks().length,
+                audioContextState: audioContextRef.current?.state
+            });
         }
 
       } catch (err: any) {
