@@ -381,31 +381,34 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
         // 2) Transcribe and update in-place
         const result = await transcribeVoiceResponse({ audioPath: base64Audio });
+        const transcriptionText = result.text || 'transcription unavailable';
+        
         await supabase
           .from('submissions')
-          .update({ transcription: result.text || 'transcription unavailable' })
+          .update({ transcription: transcriptionText })
           .eq('id', inserted.id);
 
-        setDebugText(`Transcription complete: "${result.text}"`);
+        setDebugText(`Transcription complete: "${transcriptionText}"`);
         toast({
           title: 'Feedback Submitted!',
-          description: `Transcription: "${result.text}"`,
+          description: `Transcription: "${transcriptionText}"`,
         });
         setQuestionStates(prev => ({
           ...prev,
           [questionIndex]: {
             ...prev[questionIndex],
             isSubmitted: true,
-            transcription: result.text,
+            transcription: transcriptionText,
             isTranscribing: false,
           }
         }));
       } catch (error) {
         console.error('Error transcribing audio:', error);
+        setDebugText(`Transcription failed: ${error}`);
         toast({
           variant: 'destructive',
           title: 'Submission Failed',
-          description: 'Could not save your feedback. Please try again.',
+          description: 'Could not transcribe your audio. Please try again.',
         });
         setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: false } }));
       }
