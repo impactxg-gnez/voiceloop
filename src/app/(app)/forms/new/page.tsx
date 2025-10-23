@@ -217,6 +217,8 @@ export default function NewFormPage() {
       }
 
       // Insert demographic fields if any
+      console.log('Form submission - demoFields:', demoFields);
+      console.log('Form submission - demoFields.length:', demoFields.length);
       if (demoFields.length > 0) {
         const fieldsData = demoFields.map(f => ({
           form_id: formData.id,
@@ -226,8 +228,15 @@ export default function NewFormPage() {
           required: f.required,
           options: f.input_type === 'select' ? (f.options || []) : null,
         }));
+        console.log('Inserting demographic fields:', fieldsData);
         const { error: fieldsError } = await supabase.from('form_demographic_fields').insert(fieldsData);
-        if (fieldsError) throw fieldsError;
+        if (fieldsError) {
+          console.error('Error inserting demographic fields:', fieldsError);
+          throw fieldsError;
+        }
+        console.log('Successfully inserted demographic fields');
+      } else {
+        console.log('No demographic fields to insert');
       }
 
       // Create form pages if any exist
