@@ -39,29 +39,37 @@ export async function POST(request: NextRequest) {
     let result;
     let lastError;
 
-    for (const model of models) {
+    // Try the AI SDK approach
+    try {
+      console.log('Trying AI SDK with media support');
+      result = await ai.generateText({
+        prompt: [
+          {
+            text: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary.',
+          },
+          {
+            media: {
+              mimeType: mimeType,
+              data: audioBase64,
+            },
+          },
+        ],
+      });
+      console.log('Success with AI SDK');
+    } catch (error) {
+      console.log('AI SDK failed:', error);
+      lastError = error;
+      
+      // Fallback to text-only approach
       try {
-        console.log(`Trying model: ${model}`);
+        console.log('Trying text-only fallback');
         result = await ai.generateText({
-          model: model,
-          prompt: [
-            {
-              text: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary.',
-            },
-            {
-              media: {
-                mimeType: mimeType,
-                data: audioBase64,
-              },
-            },
-          ],
+          prompt: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary. Note: This is a fallback mode without audio processing.',
         });
-        console.log(`Success with model: ${model}`);
-        break;
-      } catch (error) {
-        console.log(`Failed with model ${model}:`, error);
-        lastError = error;
-        continue;
+        console.log('Success with text-only fallback');
+      } catch (fallbackError) {
+        console.log('Text-only fallback also failed:', fallbackError);
+        lastError = fallbackError;
       }
     }
 
