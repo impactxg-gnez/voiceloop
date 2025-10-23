@@ -29,10 +29,12 @@ export async function POST(request: NextRequest) {
     if (!process.env.OPENAI_API_KEY) {
       console.log('OpenAI API key not found, using mock transcription');
       return NextResponse.json({
-        transcription: 'Mock transcription - OpenAI API key not configured',
+        transcription: 'Mock transcription - OpenAI API key not configured. Please add OPENAI_API_KEY to Vercel environment variables.',
         error: 'OpenAI API key not configured, using mock response'
       });
     }
+
+    console.log('OpenAI API key found, length:', process.env.OPENAI_API_KEY.length);
 
     // Convert audio file to buffer for Whisper
     const audioBuffer = await audioFile.arrayBuffer();
@@ -41,6 +43,7 @@ export async function POST(request: NextRequest) {
     console.log('Sending audio to Whisper for transcription...');
 
     // Use Whisper for transcription
+    console.log('Calling Whisper API...');
     const transcription = await openai.audio.transcriptions.create({
       file: audioBlob as any,
       model: "whisper-1",
@@ -52,6 +55,24 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error transcribing audio with Whisper:', error);
+    
+    // Check if it's an API key error
+    if (error?.message?.includes('API key')) {
+      return NextResponse.json({
+        transcription: 'Mock transcription - Invalid OpenAI API key. Please check your OPENAI_API_KEY in Vercel.',
+        error: 'Invalid OpenAI API key',
+        details: error?.message
+      });
+    }
+    
+    // Check if it's a network error
+    if (error?.message?.includes('fetch') || error?.message?.includes('network')) {
+      return NextResponse.json({
+        transcription: 'Mock transcription - Network error. Please check your internet connection.',
+        error: 'Network error',
+        details: error?.message
+      });
+    }
     
     // Return mock transcription as fallback
     const mockTranscription = 'Mock transcription - Whisper service unavailable';
