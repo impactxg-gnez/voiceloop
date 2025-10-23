@@ -39,9 +39,7 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
 
   const addToPending = () => {
     if (!newField.field_key || !newField.label) return;
-    console.log('Adding field to pending:', newField);
     const updatedPending = [...pendingFields, { ...newField }];
-    console.log('Updated pending fields:', updatedPending);
     setPendingFields(updatedPending);
     setNewField({ field_key: '', label: '', input_type: 'text', required: true, options: [] });
   };
@@ -52,9 +50,7 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
 
   const addField = () => {
     if (!newField.field_key || !newField.label) return;
-    console.log('Adding field to pending:', newField);
     const updatedPending = [...pendingFields, { ...newField }];
-    console.log('Updated pending fields:', updatedPending);
     setPendingFields(updatedPending);
     setNewField({ field_key: '', label: '', input_type: 'text', required: true, options: [] });
   };
@@ -73,7 +69,6 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
 
   const confirmFields = () => {
     const allFields = [...fields, ...pendingFields];
-    console.log('Confirming all demographic fields:', allFields);
     onChange(allFields);
     setPendingFields([]);
     toast({
@@ -81,9 +76,6 @@ export function DemographicsFieldsManager({ fields, onChange }: Props) {
       description: `Successfully configured ${allFields.length} demographic field${allFields.length !== 1 ? 's' : ''}`,
     });
   };
-
-  console.log('Rendering DemographicsFieldsManager - fields:', fields.length, 'pending:', pendingFields.length);
-  console.log('newField:', newField);
 
   return (
     <Card>
