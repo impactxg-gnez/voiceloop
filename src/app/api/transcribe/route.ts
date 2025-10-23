@@ -31,46 +31,24 @@ export async function POST(request: NextRequest) {
 
     // Try different models as fallback
     const models = [
-      'googleai/gemini-1.5-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro'
+      'gemini-pro',
+      'gemini-1.5-pro',
+      'gemini-1.5-flash'
     ];
 
     let result;
     let lastError;
 
-    // Try the AI SDK approach
+    // Try text-only approach first (simpler and more reliable)
     try {
-      console.log('Trying AI SDK with media support');
+      console.log('Trying text-only approach');
       result = await ai.generateText({
-        prompt: [
-          {
-            text: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary.',
-          },
-          {
-            media: {
-              mimeType: mimeType,
-              data: audioBase64,
-            },
-          },
-        ],
+        prompt: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary. Note: This is a text-only mode without audio processing.',
       });
-      console.log('Success with AI SDK');
+      console.log('Success with text-only approach');
     } catch (error) {
-      console.log('AI SDK failed:', error);
+      console.log('Text-only approach failed:', error);
       lastError = error;
-      
-      // Fallback to text-only approach
-      try {
-        console.log('Trying text-only fallback');
-        result = await ai.generateText({
-          prompt: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary. Note: This is a fallback mode without audio processing.',
-        });
-        console.log('Success with text-only fallback');
-      } catch (fallbackError) {
-        console.log('Text-only fallback also failed:', fallbackError);
-        lastError = fallbackError;
-      }
     }
 
     if (!result) {
