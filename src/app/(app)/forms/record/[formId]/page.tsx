@@ -241,7 +241,12 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   }, [questions, questionStates, toast]);
 
   useEffect(() => {
-    setupMediaRecorder();
+    console.log('useEffect called - setting up MediaRecorder...');
+    setupMediaRecorder().then(() => {
+      console.log('MediaRecorder setup completed');
+    }).catch((error) => {
+      console.error('MediaRecorder setup failed:', error);
+    });
     audioRef.current = new Audio();
     
     const currentAudioRef = audioRef.current;
