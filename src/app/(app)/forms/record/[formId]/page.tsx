@@ -134,7 +134,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         
         setMediaRecorder(recorder);
         setMicrophoneReady(true);
-        console.log('MediaRecorder set in state');
+        console.log('MediaRecorder set in state:', !!recorder);
         setDebugText('Microphone ready!');
 
         // Setup audio context for waveform visualization
@@ -173,6 +173,9 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
             });
             setDebugText('Audio context setup failed');
         }
+        
+        // Return the recorder for immediate use
+        return recorder;
 
       } catch (err: any) {
         console.error('Error accessing microphone:', err);
@@ -380,15 +383,28 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       return;
     }
     
-    // If microphone not ready, set it up first
-    if (!mediaRecorder || !microphoneReady) {
-      console.log('Setting up microphone first...');
-      setDebugText('Setting up microphone...');
+    // Always ensure microphone is set up before recording
+    if (!mediaRecorder || !microphoneReady || !audioContextRef.current || !audioStreamSourceRef.current) {
+      console.log('Setting up microphone and audio components...');
+      setDebugText('Setting up microphone and audio components...');
       try {
-        await setupMediaRecorder();
-        console.log('Microphone setup complete, starting recording...');
-        // After setup, start recording
-        startRecording(questionIndex);
+        const recorder = await setupMediaRecorder();
+        console.log('Setup complete, MediaRecorder returned:', !!recorder);
+        
+        if (!recorder) {
+          console.error('MediaRecorder not returned from setup');
+          setDebugText('MediaRecorder setup failed - please try again');
+          toast({
+            variant: "destructive",
+            title: "Microphone Setup Failed",
+            description: "Could not initialize microphone. Please try again.",
+          });
+          return;
+        }
+        
+        console.log('MediaRecorder is ready, starting recording...');
+        // Start recording after successful setup
+        await startRecording(questionIndex);
       } catch (error: any) {
         console.error('Microphone setup failed:', error);
         setDebugText(`Setup failed: ${error.message}`);
@@ -401,38 +417,30 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       return;
     }
     
-    // If audio components not ready, set them up
-    if (!audioContextRef.current || !audioStreamSourceRef.current) {
-      console.log('Audio components not ready, setting up...');
-      setDebugText('Setting up audio components...');
-      try {
-        await setupMediaRecorder();
-        console.log('Audio setup complete, starting recording...');
-        // After setup, start recording
-        startRecording(questionIndex);
-      } catch (error: any) {
-        console.error('Audio setup failed:', error);
-        setDebugText(`Audio setup failed: ${error.message}`);
-        toast({
-          variant: "destructive",
-          title: "Audio Setup Failed",
-          description: "Could not set up audio components. Please try again.",
-        });
-      }
-      return;
-    }
-    
     // Start recording
-    startRecording(questionIndex);
+    await startRecording(questionIndex);
   };
 
-  const startRecording = (questionIndex: number) => {
+  const startRecording = async (questionIndex: number) => {
     try {
       console.log('Starting recording for question:', questionIndex);
       
+      // Double-check that MediaRecorder is available
+      if (!mediaRecorder) {
+        console.error('MediaRecorder is null, cannot start recording');
+        setDebugText('MediaRecorder not available - setup failed');
+        throw new Error('MediaRecorder not available');
+      }
+      
+      if (!audioContextRef.current || !audioStreamSourceRef.current) {
+        console.error('Audio components not ready');
+        setDebugText('Audio components not ready');
+        throw new Error('Audio components not ready');
+      }
+      
       if (audioContextRef.current.state === 'suspended') {
         console.log('Resuming audio context...');
-        audioContextRef.current.resume();
+        await audioContextRef.current.resume();
       }
 
       const analyser = audioContextRef.current.createAnalyser();
@@ -454,12 +462,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       }));
 
       if (canvas) {
+        console.log('Starting waveform visualization...');
         draw(analyser, canvas, questionIndex);
+      } else {
+        console.warn('Canvas not found for waveform visualization');
       }
 
       console.log('Starting MediaRecorder...');
       mediaRecorder.start();
-      console.log('MediaRecorder.start() called');
+      console.log('MediaRecorder.start() called successfully');
       
     } catch (error: any) {
       console.error('Error starting recording:', error);
@@ -469,6 +480,13 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         title: "Recording Failed",
         description: "Could not start recording. Please try again.",
       });
+      
+      // Reset state on error
+      setActiveRecordingIndex(null);
+      setQuestionStates(prev => ({
+        ...prev,
+        [questionIndex]: { ...prev[questionIndex], isRecording: false }
+      }));
     }
   };
 
