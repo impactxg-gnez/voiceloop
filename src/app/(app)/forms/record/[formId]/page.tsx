@@ -309,24 +309,44 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   }, [currentQuestionIndex]);
 
   const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
+    console.log('=== WAVEFORM DEBUG START ===');
+    console.log('Canvas element:', canvas);
+    console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+    console.log('Analyser node:', analyser);
+    console.log('Analyser fftSize:', analyser.fftSize);
+    console.log('Analyser frequencyBinCount:', analyser.frequencyBinCount);
+    
     const canvasCtx = canvas.getContext('2d');
     if (!canvasCtx) {
-      console.error('Could not get canvas context');
+      console.error('❌ Could not get canvas context');
       return;
     }
+    console.log('✅ Canvas context obtained');
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    console.log('Data array size:', dataArray.length);
     console.log('Starting waveform drawing for question:', questionIndex);
     
+    let frameCount = 0;
     const drawFrame = () => {
+      frameCount++;
+      
       // Only continue if we're still recording this question
       if (activeRecordingIndex !== questionIndex || !questionStates[questionIndex]?.isRecording) {
         console.log('Stopping waveform drawing - not recording question:', questionIndex);
+        console.log('Active recording index:', activeRecordingIndex);
+        console.log('Question state isRecording:', questionStates[questionIndex]?.isRecording);
         return;
       }
       
       animationFrameIds[questionIndex] = requestAnimationFrame(drawFrame);
       analyser.getByteTimeDomainData(dataArray);
+
+      // Log data every 60 frames (about once per second)
+      if (frameCount % 60 === 0) {
+        console.log(`Frame ${frameCount} - Data array sample:`, dataArray.slice(0, 10));
+        console.log('Data range:', Math.min(...dataArray), 'to', Math.max(...dataArray));
+      }
 
       // Clear canvas with dark background
       canvasCtx.fillStyle = '#1a1a1a';
@@ -348,6 +368,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       const sliceWidth = canvas.width / analyser.frequencyBinCount;
       let x = 0;
       let hasData = false;
+      let maxAmplitude = 0;
 
       for (let i = 0; i < analyser.frequencyBinCount; i++) {
           const v = dataArray[i] / 128.0;
@@ -361,19 +382,27 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           x += sliceWidth;
           
           // Check if we have any significant audio data
-          if (Math.abs(v) > 0.1) {
+          const amplitude = Math.abs(v);
+          if (amplitude > 0.1) {
             hasData = true;
           }
+          maxAmplitude = Math.max(maxAmplitude, amplitude);
       }
 
       canvasCtx.stroke();
       
-      // Log waveform activity occasionally
-      if (hasData && Math.random() < 0.01) { // 1% chance to log
-        console.log('Waveform drawing - audio data detected');
+      // Log waveform activity every 60 frames
+      if (frameCount % 60 === 0) {
+        console.log(`Waveform frame ${frameCount}: hasData=${hasData}, maxAmplitude=${maxAmplitude.toFixed(3)}`);
+        if (hasData) {
+          console.log('🎵 Audio data detected in waveform!');
+        } else {
+          console.log('🔇 No significant audio data');
+        }
       }
     };
     
+    console.log('=== WAVEFORM DEBUG END - Starting draw loop ===');
     drawFrame();
   };
 
@@ -475,9 +504,26 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0.8;
       
+      console.log('=== AUDIO CONNECTION DEBUG ===');
+      console.log('Audio context state:', audioContextRef.current.state);
+      console.log('Audio stream source:', audioStreamSourceRef.current);
+      console.log('Analyser created:', analyser);
+      console.log('Analyser fftSize:', analyser.fftSize);
+      console.log('Analyser frequencyBinCount:', analyser.frequencyBinCount);
+      
       // Connect the audio stream to the analyser
-      audioStreamSourceRef.current.connect(analyser);
-      console.log('Analyser connected to audio stream source');
+      try {
+        audioStreamSourceRef.current.connect(analyser);
+        console.log('✅ Analyser connected to audio stream source');
+        
+        // Test the connection
+        const testArray = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteTimeDomainData(testArray);
+        console.log('✅ Analyser data retrieval test successful');
+        console.log('Test data sample:', testArray.slice(0, 5));
+      } catch (error) {
+        console.error('❌ Failed to connect analyser:', error);
+      }
 
       const canvas = canvasRefs.current[questionIndex];
 
@@ -495,15 +541,29 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       if (canvas) {
         console.log('Starting waveform visualization on canvas:', canvas);
-        // Clear canvas first
+        console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+        
+        // Clear canvas first and draw a test pattern
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.fillStyle = '#1a1a1a';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw a test pattern to verify canvas is working
+          ctx.strokeStyle = '#00ff00';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(10, 10);
+          ctx.lineTo(canvas.width - 10, canvas.height - 10);
+          ctx.moveTo(canvas.width - 10, 10);
+          ctx.lineTo(10, canvas.height - 10);
+          ctx.stroke();
+          console.log('✅ Canvas test pattern drawn');
         }
+        
         draw(analyser, canvas, questionIndex);
       } else {
-        console.warn('Canvas not found for waveform visualization');
+        console.warn('❌ Canvas not found for waveform visualization');
       }
 
       console.log('Starting MediaRecorder...');
