@@ -134,6 +134,15 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
       return;
     }
 
+    // If formId is 'temp', we can't link yet
+    if (formId === 'temp') {
+      toast({
+        title: 'Form Not Created Yet',
+        description: 'Please create the form first, then you can link your Google Drive folder.',
+      });
+      return;
+    }
+
     setIsLinking(true);
     try {
       const response = await fetch('/api/google-drive/link', {
@@ -305,7 +314,18 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
           </p>
         </div>
 
-        {folderId && (
+        {folderId && formId === 'temp' && (
+          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-yellow-600" />
+              <span className="text-sm text-yellow-700 dark:text-yellow-300">
+                Folder validated! Create the form first, then you can link this folder.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {folderId && formId !== 'temp' && (
           <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
@@ -333,13 +353,18 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
 
         <Button 
           onClick={handleLinkGoogleDrive}
-          disabled={isLinking || !folderId}
+          disabled={isLinking || !folderId || formId === 'temp'}
           className="w-full"
         >
           {isLinking ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Linking to Google Drive...
+            </>
+          ) : formId === 'temp' ? (
+            <>
+              <FolderOpen className="h-4 w-4 mr-2" />
+              Create Form First
             </>
           ) : (
             <>

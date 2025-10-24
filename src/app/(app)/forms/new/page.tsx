@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useRouter } from 'next/navigation';
-import { PlusCircle, Trash2, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, Loader2, FolderOpen } from 'lucide-react';
 import { useSupabaseClient, useUser } from '@/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { FormPageManager } from '@/components/form-page-manager';
@@ -619,11 +619,26 @@ export default function NewFormPage() {
           </CardContent>
         </Card>
 
+        {/* Google Drive Integration - Show during form creation */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FolderOpen className="h-5 w-5" />
+              Google Drive Integration (Optional)
+            </CardTitle>
+            <CardDescription>
+              Link your Google Drive folder to automatically save form responses. You can set this up now or after creating the form.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <GoogleDriveLink formId={createdFormId || 'temp'} />
+          </CardContent>
+        </Card>
+
         {/* Google Sheets Integration Info */}
         {createdFormId && (
           <div className="max-w-2xl mx-auto mt-6 space-y-4">
             <GoogleSheetsInfo formId={createdFormId} />
-            <GoogleDriveLink formId={createdFormId} />
           </div>
         )}
       </main>
