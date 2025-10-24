@@ -305,21 +305,37 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     
     const drawFrame = () => {
+      // Only continue if we're still recording this question
+      if (activeRecordingIndex !== questionIndex || !questionStates[questionIndex]?.isRecording) {
+        return;
+      }
+      
       animationFrameIds[questionIndex] = requestAnimationFrame(drawFrame);
       analyser.getByteTimeDomainData(dataArray);
 
-      canvasCtx.fillStyle = 'hsl(var(--secondary))';
+      // Clear canvas with dark background
+      canvasCtx.fillStyle = '#1a1a1a';
       canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw grid lines
+      canvasCtx.strokeStyle = '#333';
+      canvasCtx.lineWidth = 1;
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(0, canvas.height / 2);
+      canvasCtx.lineTo(canvas.width, canvas.height / 2);
+      canvasCtx.stroke();
+      
+      // Draw waveform
       canvasCtx.lineWidth = 2;
-      canvasCtx.strokeStyle = 'hsl(var(--primary))';
+      canvasCtx.strokeStyle = '#3b82f6';
       canvasCtx.beginPath();
 
-      const sliceWidth = canvas.width * 1.0 / analyser.frequencyBinCount;
+      const sliceWidth = canvas.width / analyser.frequencyBinCount;
       let x = 0;
 
       for (let i = 0; i < analyser.frequencyBinCount; i++) {
           const v = dataArray[i] / 128.0;
-          const y = v * canvas.height / 2;
+          const y = (v * canvas.height / 2) + (canvas.height / 2);
 
           if (i === 0) {
               canvasCtx.moveTo(x, y);
@@ -329,7 +345,6 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           x += sliceWidth;
       }
 
-      canvasCtx.lineTo(canvas.width, canvas.height / 2);
       canvasCtx.stroke();
     };
     
@@ -337,94 +352,123 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   };
 
 
-  const startRecording = (questionIndex: number) => {
-    console.log('startRecording called for question:', questionIndex);
+  const handleMicrophoneAction = async (questionIndex: number) => {
+    console.log('handleMicrophoneAction called for question:', questionIndex);
     console.log('Current state:', {
       mediaRecorder: !!mediaRecorder,
       activeRecordingIndex,
       audioContext: !!audioContextRef.current,
       audioStreamSource: !!audioStreamSourceRef.current,
-      microphoneReady
+      microphoneReady,
+      isRecording: questionStates[questionIndex]?.isRecording
     });
     
-    if (activeRecordingIndex !== null) {
-        console.log('Recording already in progress');
-        toast({
-            variant: "destructive",
-            title: "Recording in Progress",
-            description: "Please stop the current recording before starting a new one.",
-        });
-        return;
+    // If already recording, stop it
+    if (activeRecordingIndex === questionIndex && questionStates[questionIndex]?.isRecording) {
+      stopRecording(questionIndex);
+      return;
     }
     
+    // If recording another question, show error
+    if (activeRecordingIndex !== null && activeRecordingIndex !== questionIndex) {
+      console.log('Recording already in progress for another question');
+      toast({
+        variant: "destructive",
+        title: "Recording in Progress",
+        description: "Please stop the current recording before starting a new one.",
+      });
+      return;
+    }
+    
+    // If microphone not ready, set it up first
     if (!mediaRecorder || !microphoneReady) {
-        console.log('MediaRecorder not set up, calling setupMediaRecorder...');
-        setDebugText('Setting up microphone...');
-        setupMediaRecorder().then(() => {
-          console.log('MediaRecorder setup complete');
-          toast({ title: 'Microphone ready! Please try recording again.' });
-        }).catch((error) => {
-          console.error('MediaRecorder setup failed:', error);
-          setDebugText(`Setup failed: ${error.message}`);
-        });
-        return;
-    }
-    
-    if (!audioContextRef.current || !audioStreamSourceRef.current) {
-        console.log('Audio context or stream source not ready');
-        setDebugText('Audio components not ready - setting up...');
-        setupMediaRecorder().then(() => {
-          console.log('Audio setup complete, retrying recording...');
-          startRecording(questionIndex);
-        }).catch((error) => {
-          console.error('Audio setup failed:', error);
-          setDebugText(`Audio setup failed: ${error.message}`);
-        });
-        return;
-    }
-    
-    try {
-        console.log('All conditions met, starting recording...');
-        
-        if (audioContextRef.current.state === 'suspended') {
-            console.log('Resuming audio context...');
-            audioContextRef.current.resume();
-        }
-
-        const analyser = audioContextRef.current.createAnalyser();
-        analyser.fftSize = 2048;
-        audioStreamSourceRef.current.connect(analyser);
-
-        const canvas = canvasRefs.current[questionIndex];
-
-        setActiveRecordingIndex(questionIndex);
-        setDebugText(`Started recording for question ${questionIndex + 1}`);
-        setQuestionStates(prev => ({
-            ...prev,
-            [questionIndex]: {
-                ...prev[questionIndex],
-                isRecording: true,
-                audioChunks: [],
-                analyser,
-            }
-        }));
-
-        if (canvas) {
-          draw(analyser, canvas, questionIndex);
-        }
-
-        console.log('Starting MediaRecorder...');
-        mediaRecorder.start();
-        console.log('MediaRecorder.start() called');
-        
-    } catch (error: any) {
-        console.error('Error starting recording:', error);
-        setDebugText(`Recording start error: ${error.message}`);
+      console.log('Setting up microphone first...');
+      setDebugText('Setting up microphone...');
+      try {
+        await setupMediaRecorder();
+        console.log('Microphone setup complete, starting recording...');
+        // After setup, start recording
+        startRecording(questionIndex);
+      } catch (error: any) {
+        console.error('Microphone setup failed:', error);
+        setDebugText(`Setup failed: ${error.message}`);
         toast({
-            variant: "destructive",
-            title: "Recording Failed",
-            description: "Could not start recording. Please try again.",
+          variant: "destructive",
+          title: "Microphone Setup Failed",
+          description: "Could not access microphone. Please check permissions.",
         });
+      }
+      return;
+    }
+    
+    // If audio components not ready, set them up
+    if (!audioContextRef.current || !audioStreamSourceRef.current) {
+      console.log('Audio components not ready, setting up...');
+      setDebugText('Setting up audio components...');
+      try {
+        await setupMediaRecorder();
+        console.log('Audio setup complete, starting recording...');
+        // After setup, start recording
+        startRecording(questionIndex);
+      } catch (error: any) {
+        console.error('Audio setup failed:', error);
+        setDebugText(`Audio setup failed: ${error.message}`);
+        toast({
+          variant: "destructive",
+          title: "Audio Setup Failed",
+          description: "Could not set up audio components. Please try again.",
+        });
+      }
+      return;
+    }
+    
+    // Start recording
+    startRecording(questionIndex);
+  };
+
+  const startRecording = (questionIndex: number) => {
+    try {
+      console.log('Starting recording for question:', questionIndex);
+      
+      if (audioContextRef.current.state === 'suspended') {
+        console.log('Resuming audio context...');
+        audioContextRef.current.resume();
+      }
+
+      const analyser = audioContextRef.current.createAnalyser();
+      analyser.fftSize = 2048;
+      audioStreamSourceRef.current.connect(analyser);
+
+      const canvas = canvasRefs.current[questionIndex];
+
+      setActiveRecordingIndex(questionIndex);
+      setDebugText(`Started recording for question ${questionIndex + 1}`);
+      setQuestionStates(prev => ({
+        ...prev,
+        [questionIndex]: {
+          ...prev[questionIndex],
+          isRecording: true,
+          audioChunks: [],
+          analyser,
+        }
+      }));
+
+      if (canvas) {
+        draw(analyser, canvas, questionIndex);
+      }
+
+      console.log('Starting MediaRecorder...');
+      mediaRecorder.start();
+      console.log('MediaRecorder.start() called');
+      
+    } catch (error: any) {
+      console.error('Error starting recording:', error);
+      setDebugText(`Recording start error: ${error.message}`);
+      toast({
+        variant: "destructive",
+        title: "Recording Failed",
+        description: "Could not start recording. Please try again.",
+      });
     }
   };
 
@@ -442,11 +486,22 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         delete animationFrameIds[questionIndex];
       }
       
+      // Clear the canvas
       const canvas = canvasRefs.current[questionIndex];
-      const canvasCtx = canvas?.getContext('2d');
-      if (canvas && canvasCtx) {
-        canvasCtx.fillStyle = 'hsl(var(--secondary))';
-        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      if (canvas) {
+        const canvasCtx = canvas.getContext('2d');
+        if (canvasCtx) {
+          canvasCtx.fillStyle = '#1a1a1a';
+          canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw a subtle "ready" indicator
+          canvasCtx.strokeStyle = '#333';
+          canvasCtx.lineWidth = 1;
+          canvasCtx.beginPath();
+          canvasCtx.moveTo(0, canvas.height / 2);
+          canvasCtx.lineTo(canvas.width, canvas.height / 2);
+          canvasCtx.stroke();
+        }
       }
       
       setQuestionStates(prev => ({
@@ -650,45 +705,28 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                     </div>
 
                     <div className="flex flex-col items-center gap-4">
-                        <div className="mb-4">
-                            <Button 
-                                onClick={() => {
-                                    console.log('Manual microphone setup triggered');
-                                    setDebugText('Setting up microphone manually...');
-                                    setupMediaRecorder().then(() => {
-                                        console.log('Manual setup completed');
-                                        toast({ title: 'Microphone ready! You can now record.' });
-                                    }).catch((error) => {
-                                        console.error('Manual setup failed:', error);
-                                        setDebugText(`Setup failed: ${error.message}`);
-                                    });
-                                }}
-                                variant="outline"
-                                className="mb-2"
-                            >
-                                <Mic className="w-4 h-4 mr-2" />
-                                {microphoneReady ? 'Reset Microphone' : 'Setup Microphone'}
-                            </Button>
-                            <p className="text-sm text-muted-foreground">
-                                {microphoneReady ? 'Microphone is ready' : 'Click to enable microphone access'}
-                            </p>
-                        </div>
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => isRecordingThis ? stopRecording(currentQuestionIndex) : startRecording(currentQuestionIndex)}
-                                disabled={isRecordingAnother || currentQuestionState.isSubmitted || !microphoneReady}
+                                onClick={() => handleMicrophoneAction(currentQuestionIndex)}
+                                disabled={isRecordingAnother || currentQuestionState.isSubmitted}
                                 className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                 isRecordingThis ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
                                 }`}
+                                title={isRecordingThis ? 'Stop Recording' : (microphoneReady ? 'Start Recording' : 'Setup Microphone & Start Recording')}
                             >
                                 {isRecordingThis ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
                             </button>
-                            <canvas 
-                                ref={el => { canvasRefs.current[currentQuestionIndex] = el; }}
-                                width="200"
-                                height="80"
-                                className="rounded-md bg-secondary"
-                            ></canvas>
+                            <div className="flex flex-col items-center">
+                                <canvas 
+                                    ref={el => { canvasRefs.current[currentQuestionIndex] = el; }}
+                                    width="300"
+                                    height="100"
+                                    className="rounded-md bg-gray-900 border border-gray-700"
+                                ></canvas>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {isRecordingThis ? 'Recording...' : (microphoneReady ? 'Ready to record' : 'Click mic to setup & record')}
+                                </p>
+                            </div>
                         </div>
                         <p className="text-sm text-muted-foreground h-5">
                             {isRecordingThis ? 'Recording...' : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
