@@ -13,6 +13,7 @@ interface ResponseData {
   form_id: string;
   question_text: string;
   response_text: string;
+  parsed_fields: Record<string, any>;
   created_at: string;
   user_id: string;
 }
@@ -51,14 +52,35 @@ export function ResponsesTab({ formId }: { formId: string }) {
       return;
     }
 
+    // Get all unique field names from parsed_fields
+    const allFields = new Set<string>();
+    responses.forEach(response => {
+      if (response.parsed_fields) {
+        Object.keys(response.parsed_fields).forEach(key => allFields.add(key));
+      }
+    });
+    const fieldNames = Array.from(allFields).sort();
+    
+    // Build CSV with dynamic columns
+    const headers = ['Question', 'Response', 'Date', 'Time', ...fieldNames];
     const csvContent = [
-      ['Question', 'Response', 'Date', 'Time'].join(','),
-      ...responses.map(response => [
-        `"${response.question_text}"`,
-        `"${response.response_text}"`,
-        `"${new Date(response.created_at).toLocaleDateString()}"`,
-        `"${new Date(response.created_at).toLocaleTimeString()}"`
-      ].join(','))
+      headers.join(','),
+      ...responses.map(response => {
+        const baseFields = [
+          `"${response.question_text}"`,
+          `"${response.response_text}"`,
+          `"${new Date(response.created_at).toLocaleDateString()}"`,
+          `"${new Date(response.created_at).toLocaleTimeString()}"`
+        ];
+        
+        // Add parsed field values in the correct order
+        const parsedFieldValues = fieldNames.map(fieldName => {
+          const value = response.parsed_fields?.[fieldName];
+          return value ? `"${value}"` : '""';
+        });
+        
+        return [...baseFields, ...parsedFieldValues].join(',');
+      })
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -143,7 +165,7 @@ export function ResponsesTab({ formId }: { formId: string }) {
               {responses.map((response) => {
                 const { date, time } = formatDate(response.created_at);
                 return (
-                  <div key={response.id} className="border rounded-lg p-4 space-y-2">
+                  <div key={response.id} className="border rounded-lg p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h4 className="font-medium text-sm">{response.question_text}</h4>
@@ -160,6 +182,20 @@ export function ResponsesTab({ formId }: { formId: string }) {
                         </Badge>
                       </div>
                     </div>
+                    
+                    {/* Display parsed fields if available */}
+                    {response.parsed_fields && Object.keys(response.parsed_fields).length > 0 && (
+                      <div className="border-t pt-2 mt-2">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Extracted Data:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(response.parsed_fields).map(([key, value]) => (
+                            <Badge key={key} variant="default" className="text-xs">
+                              {key}: {String(value)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

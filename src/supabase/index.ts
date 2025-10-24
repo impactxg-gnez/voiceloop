@@ -109,6 +109,7 @@ export type Database = {
           question_text: string;
           response_text: string;
           audio_url: string | null;
+          parsed_fields: Record<string, any>;
           created_at: string;
         };
         Insert: {
@@ -119,6 +120,7 @@ export type Database = {
           question_text: string;
           response_text: string;
           audio_url?: string | null;
+          parsed_fields?: Record<string, any>;
           created_at?: string;
         };
         Update: {
@@ -129,6 +131,7 @@ export type Database = {
           question_text?: string;
           response_text?: string;
           audio_url?: string | null;
+          parsed_fields?: Record<string, any>;
           created_at?: string;
         };
       };

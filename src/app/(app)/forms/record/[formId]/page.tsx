@@ -584,16 +584,46 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       
       const transcriptionText = transcriptionResult.transcription || 'transcription unavailable';
       
-      // Step 3: Update database with transcription (90%)
-      setProcessingProgress(90);
-      setDebugText('Saving transcription to database...');
+      // Step 3: Extract structured fields from response (85%)
+      setProcessingProgress(85);
+      setDebugText('Extracting structured data...');
+      
+      let parsedFields = {};
+      try {
+        const extractResponse = await fetch('/api/extract-fields', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            questionText: questions[currentQuestionIndex].text,
+            responseText: transcriptionText,
+          }),
+        });
+        
+        if (extractResponse.ok) {
+          const extractData = await extractResponse.json();
+          parsedFields = extractData.fields || {};
+          console.log('Extracted fields:', parsedFields);
+        }
+      } catch (extractError) {
+        console.error('Error extracting fields:', extractError);
+        // Continue anyway, just without parsed fields
+      }
+      
+      // Step 4: Update database with transcription and parsed fields (95%)
+      setProcessingProgress(95);
+      setDebugText('Saving data to database...');
       
         await supabase
           .from('form_responses')
-        .update({ response_text: transcriptionText })
+        .update({ 
+          response_text: transcriptionText,
+          parsed_fields: parsedFields
+        })
           .eq('id', inserted.id);
 
-      // Step 4: Complete (100%)
+      // Step 5: Complete (100%)
       setProcessingProgress(100);
       setDebugText(`Response saved: "${transcriptionText}"`);
 
