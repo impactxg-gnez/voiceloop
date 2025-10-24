@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ai } from '@/ai/genkit';
+import OpenAI from 'openai';
 
 export async function POST(request: NextRequest) {
   try {
     console.log('Test transcribe endpoint called');
+    
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY not found in environment');
+      return NextResponse.json(
+        { error: 'OpenAI API key not configured' },
+        { status: 500 }
+      );
+    }
+
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
     
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File;
@@ -22,41 +35,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert audio file to base64 for Gemini
-    const audioBuffer = await audioFile.arrayBuffer();
-    const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-    const mimeType = audioFile.type || 'audio/wav';
-
-    console.log('Audio details:', {
-      bufferSize: audioBuffer.byteLength,
-      base64Length: audioBase64.length,
-      mimeType: mimeType
+    console.log('Transcribing with OpenAI Whisper...');
+    
+    // Whisper expects the file directly
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: 'whisper-1',
+      language: 'en', // Optional: specify language for better accuracy
     });
 
-    console.log('Calling AI transcription...');
-    const result = await ai.generateText({
-      model: 'googleai/gemini-1.5-flash',
-      prompt: [
-        {
-          text: 'Transcribe the following audio to text. Return only the transcribed text without any additional formatting or commentary.',
-        },
-        {
-          media: {
-            mimeType: mimeType,
-            data: audioBase64,
-          },
-        },
-      ],
-    });
-
-    console.log('Transcription result:', result);
+    console.log('Transcription successful:', transcription.text);
 
     return NextResponse.json({
-      transcription: result.text,
+      transcription: transcription.text,
       success: true,
       debug: {
-        audioSize: audioBuffer.byteLength,
-        mimeType: mimeType
+        audioSize: audioFile.size,
+        audioType: audioFile.type
       }
     });
   } catch (error) {
