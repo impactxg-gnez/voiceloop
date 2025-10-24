@@ -15,7 +15,7 @@ const getSupabaseClient = () => {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('Debug forms API called');
+    console.log('Debug forms API called - v2');
     
     const supabase = getSupabaseClient();
     console.log('Supabase client initialized');
@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
+      version: 'v2',
       testQuery: { data: testData, error: testError },
       formsQuery: { data: forms, error: formsError },
       simpleQuery: { data: formsSimple, error: formsSimpleError },
