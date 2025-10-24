@@ -20,10 +20,15 @@ const getSupabaseClient = () => {
 };
 
 export async function POST(request: NextRequest) {
+  console.log('Google Sheets API POST route called');
+  
   try {
     const { formId, transcription, questionText, userId } = await request.json();
+    
+    console.log('Received data:', { formId, transcription, questionText, userId });
 
     if (!formId || !transcription) {
+      console.log('Missing required fields');
       return NextResponse.json(
         { error: 'Form ID and transcription are required' },
         { status: 400 }
