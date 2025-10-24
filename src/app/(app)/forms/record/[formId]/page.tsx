@@ -90,11 +90,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   const setupMediaRecorder = async () => {
     console.log('Setting up MediaRecorder...');
+    setDebugText('Setting up microphone...');
+    
     if (typeof window !== 'undefined' && 'MediaRecorder' in window) {
       try {
         console.log('Requesting microphone access...');
+        setDebugText('Requesting microphone access...');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         console.log('Microphone access granted, stream:', stream);
+        setDebugText('Microphone access granted');
         
         const recorder = new MediaRecorder(stream);
         console.log('MediaRecorder created:', recorder);
@@ -126,12 +130,20 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         
         recorder.onerror = (event) => {
           console.error('MediaRecorder error:', event);
+          setDebugText(`MediaRecorder error: ${event}`);
         };
         
         setMediaRecorder(recorder);
         setMicrophoneReady(true);
         console.log('MediaRecorder set in state');
+        setDebugText('Microphone ready!');
 
+        // Setup audio context for waveform visualization
+        if (!audioContextRef.current) {
+          console.log('Creating audio context...');
+          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        
         if (audioContextRef.current && stream.getAudioTracks().length > 0) {
             console.log('Creating audio stream source...');
             console.log('Audio context state before resume:', audioContextRef.current.state);
@@ -149,6 +161,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
             try {
                 audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
                 console.log('Audio context source created successfully:', audioStreamSourceRef.current);
+                setDebugText('Audio context and stream source ready');
             } catch (error) {
                 console.error('Error creating audio stream source:', error);
                 setDebugText(`Audio stream source error: ${error}`);
@@ -159,6 +172,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                 audioTracks: stream.getAudioTracks().length,
                 audioContextState: audioContextRef.current?.state
             });
+            setDebugText('Audio context setup failed');
         }
 
       } catch (err: any) {
@@ -243,12 +257,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   }, [questions, questionStates, toast]);
 
   useEffect(() => {
-    console.log('useEffect called - setting up MediaRecorder...');
-    setupMediaRecorder().then(() => {
-      console.log('MediaRecorder setup completed');
-    }).catch((error) => {
-      console.error('MediaRecorder setup failed:', error);
-    });
+    // Initialize audio ref
     audioRef.current = new Audio();
     
     const currentAudioRef = audioRef.current;
@@ -335,10 +344,47 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       mediaRecorder: !!mediaRecorder,
       activeRecordingIndex,
       audioContext: !!audioContextRef.current,
-      audioStreamSource: !!audioStreamSourceRef.current
+      audioStreamSource: !!audioStreamSourceRef.current,
+      microphoneReady
     });
     
-    if (mediaRecorder && activeRecordingIndex === null && audioContextRef.current && audioStreamSourceRef.current) {
+    if (activeRecordingIndex !== null) {
+        console.log('Recording already in progress');
+        toast({
+            variant: "destructive",
+            title: "Recording in Progress",
+            description: "Please stop the current recording before starting a new one.",
+        });
+        return;
+    }
+    
+    if (!mediaRecorder || !microphoneReady) {
+        console.log('MediaRecorder not set up, calling setupMediaRecorder...');
+        setDebugText('Setting up microphone...');
+        setupMediaRecorder().then(() => {
+          console.log('MediaRecorder setup complete');
+          toast({ title: 'Microphone ready! Please try recording again.' });
+        }).catch((error) => {
+          console.error('MediaRecorder setup failed:', error);
+          setDebugText(`Setup failed: ${error.message}`);
+        });
+        return;
+    }
+    
+    if (!audioContextRef.current || !audioStreamSourceRef.current) {
+        console.log('Audio context or stream source not ready');
+        setDebugText('Audio components not ready - setting up...');
+        setupMediaRecorder().then(() => {
+          console.log('Audio setup complete, retrying recording...');
+          startRecording(questionIndex);
+        }).catch((error) => {
+          console.error('Audio setup failed:', error);
+          setDebugText(`Audio setup failed: ${error.message}`);
+        });
+        return;
+    }
+    
+    try {
         console.log('All conditions met, starting recording...');
         
         if (audioContextRef.current.state === 'suspended') {
@@ -371,27 +417,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         console.log('Starting MediaRecorder...');
         mediaRecorder.start();
         console.log('MediaRecorder.start() called');
-
-    } else if (activeRecordingIndex !== null) {
-        console.log('Recording already in progress');
+        
+    } catch (error: any) {
+        console.error('Error starting recording:', error);
+        setDebugText(`Recording start error: ${error.message}`);
         toast({
             variant: "destructive",
-            title: "Recording in Progress",
-            description: "Please stop the current recording before starting a new one.",
+            title: "Recording Failed",
+            description: "Could not start recording. Please try again.",
         });
-    } else if (!mediaRecorder || !microphoneReady) {
-        console.log('MediaRecorder not set up, calling setupMediaRecorder...');
-        setDebugText('Setting up microphone...');
-        setupMediaRecorder().then(() => {
-          console.log('MediaRecorder setup complete');
-          toast({ title: 'Microphone ready! Please try recording again.' });
-        }).catch((error) => {
-          console.error('MediaRecorder setup failed:', error);
-          setDebugText(`Setup failed: ${error.message}`);
-        });
-    } else {
-        console.log('Missing required components for recording');
-        setDebugText('Missing audio components - check browser console');
     }
   };
 
@@ -610,29 +644,29 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                     </div>
 
                     <div className="flex flex-col items-center gap-4">
-                        {!microphoneReady && (
-                            <div className="mb-4">
-                                <Button 
-                                    onClick={() => {
-                                        console.log('Manual microphone setup triggered');
-                                        setDebugText('Setting up microphone manually...');
-                                        setupMediaRecorder().then(() => {
-                                            console.log('Manual setup completed');
-                                            toast({ title: 'Microphone ready! You can now record.' });
-                                        }).catch((error) => {
-                                            console.error('Manual setup failed:', error);
-                                            setDebugText(`Setup failed: ${error.message}`);
-                                        });
-                                    }}
-                                    variant="outline"
-                                    className="mb-2"
-                                >
-                                    <Mic className="w-4 h-4 mr-2" />
-                                    Setup Microphone
-                                </Button>
-                                <p className="text-sm text-muted-foreground">Click to enable microphone access</p>
-                            </div>
-                        )}
+                        <div className="mb-4">
+                            <Button 
+                                onClick={() => {
+                                    console.log('Manual microphone setup triggered');
+                                    setDebugText('Setting up microphone manually...');
+                                    setupMediaRecorder().then(() => {
+                                        console.log('Manual setup completed');
+                                        toast({ title: 'Microphone ready! You can now record.' });
+                                    }).catch((error) => {
+                                        console.error('Manual setup failed:', error);
+                                        setDebugText(`Setup failed: ${error.message}`);
+                                    });
+                                }}
+                                variant="outline"
+                                className="mb-2"
+                            >
+                                <Mic className="w-4 h-4 mr-2" />
+                                {microphoneReady ? 'Reset Microphone' : 'Setup Microphone'}
+                            </Button>
+                            <p className="text-sm text-muted-foreground">
+                                {microphoneReady ? 'Microphone is ready' : 'Click to enable microphone access'}
+                            </p>
+                        </div>
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => isRecordingThis ? stopRecording(currentQuestionIndex) : startRecording(currentQuestionIndex)}
