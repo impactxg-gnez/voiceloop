@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,10 +42,12 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
 
-  // Debug logging
-  console.log('DemographicsCapture - formId:', formId);
-  console.log('DemographicsCapture - configuredFields:', configuredFields);
-  console.log('DemographicsCapture - fieldsLoading:', fieldsLoading);
+  // Debug logging (only when values change)
+  useEffect(() => {
+    console.log('DemographicsCapture - formId:', formId);
+    console.log('DemographicsCapture - configuredFields:', configuredFields);
+    console.log('DemographicsCapture - fieldsLoading:', fieldsLoading);
+  }, [formId, configuredFields, fieldsLoading]);
 
   // Debug function to check database
   const debugDemographics = async () => {
@@ -128,8 +130,8 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
     }
   };
 
-  // Generate dynamic content based on configured fields
-  const generateDynamicContent = () => {
+  // Generate dynamic content based on configured fields (memoized)
+  const dynamicContent = useMemo(() => {
     if (!configuredFields || configuredFields.length === 0) {
       console.log('No configured fields found, using fallback content');
       return {
@@ -147,9 +149,7 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
       description: `Please provide your ${fieldNames} information`,
       prompt: `Please tell us your ${fieldNames}. You can switch to text if you prefer.`
     };
-  };
-
-  const dynamicContent = generateDynamicContent();
+  }, [configuredFields]);
 
   // TTS welcome prompt (single play unless user presses Replay)
   const speak = (message: string) => {
