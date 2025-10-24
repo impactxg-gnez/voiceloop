@@ -532,14 +532,14 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       setDebugText('Saving audio to database...');
       
         const { data: inserted, error: insertError } = await supabase
-          .from('submissions')
+          .from('form_responses')
           .insert({
             form_id: formId,
           question_id: questions[currentQuestionIndex].id,
           question_text: questions[currentQuestionIndex].text,
           audio_url: '',
-            transcription: 'processing…',
-            submitter_uid: user?.id ?? null,
+            response_text: 'processing…',
+            user_id: user?.id ?? null,
           })
           .select('id')
           .single();
@@ -584,58 +584,18 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       
       const transcriptionText = transcriptionResult.transcription || 'transcription unavailable';
       
-      // Step 3: Update database with transcription (80%)
-      setProcessingProgress(80);
+      // Step 3: Update database with transcription (90%)
+      setProcessingProgress(90);
       setDebugText('Saving transcription to database...');
       
         await supabase
-          .from('submissions')
-        .update({ transcription: transcriptionText })
+          .from('form_responses')
+        .update({ response_text: transcriptionText })
           .eq('id', inserted.id);
 
-      // Step 4: Send to Google Sheets (90%)
-      setProcessingProgress(90);
-      setDebugText('Sending data to Google Sheets...');
-      
-      try {
-        console.log('Sending to Google Sheets:', {
-          formId: formId,
-          transcription: transcriptionText,
-          questionText: questions[currentQuestionIndex].text,
-          userId: user?.id,
-        });
-        
-        const sheetsResponse = await fetch('/api/google-sheets', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            formId: formId,
-            transcription: transcriptionText,
-            questionText: questions[currentQuestionIndex].text,
-            userId: user?.id,
-          }),
-        });
-
-        console.log('Google Sheets response status:', sheetsResponse.status);
-        
-        if (sheetsResponse.ok) {
-          const sheetsData = await sheetsResponse.json();
-          console.log('Google Sheets response:', sheetsData);
-          setDebugText(`Transcription complete: "${transcriptionText}" | Added to Google Sheets`);
-        } else {
-          const errorData = await sheetsResponse.json();
-          console.error('Google Sheets error:', errorData);
-          setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets error: ${errorData.error}`);
-        }
-      } catch (sheetsError) {
-        console.error('Error sending to Google Sheets:', sheetsError);
-        setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets error`);
-      }
-
-      // Step 5: Complete (100%)
+      // Step 4: Complete (100%)
       setProcessingProgress(100);
+      setDebugText(`Response saved: "${transcriptionText}"`);
 
         toast({
           title: 'Feedback Submitted!',

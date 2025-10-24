@@ -12,40 +12,23 @@ interface ResponseData {
   id: string;
   form_id: string;
   question_text: string;
-  transcription: string;
+  response_text: string;
   created_at: string;
-  submitter_uid: string;
-}
-
-interface GoogleDriveLink {
-  id: string;
-  form_id: string;
-  folder_id: string;
-  folder_url: string;
-  folder_name: string;
-  created_at: string;
+  user_id: string;
 }
 
 export function ResponsesTab({ formId }: { formId: string }) {
   const { toast } = useToast();
   const { user } = useUser();
   const [responses, setResponses] = useState<ResponseData[]>([]);
-  const [googleDriveLink, setGoogleDriveLink] = useState<GoogleDriveLink | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
 
   // Fetch responses from Supabase
   const { data: responsesData, loading: responsesLoading } = useCollection<ResponseData>(
-    'submissions',
+    'form_responses',
     '*',
     { form_id: formId }
-  );
-
-  // Fetch Google Drive link
-  const { data: driveLinkData, loading: driveLinkLoading } = useCollection<GoogleDriveLink>(
-    'user_google_drive_links',
-    '*',
-    { form_id: formId, user_id: user?.id }
   );
 
   useEffect(() => {
@@ -55,14 +38,8 @@ export function ResponsesTab({ formId }: { formId: string }) {
   }, [responsesData]);
 
   useEffect(() => {
-    if (driveLinkData && driveLinkData.length > 0) {
-      setGoogleDriveLink(driveLinkData[0]);
-    }
-  }, [driveLinkData]);
-
-  useEffect(() => {
-    setIsLoading(responsesLoading || driveLinkLoading);
-  }, [responsesLoading, driveLinkLoading]);
+    setIsLoading(responsesLoading);
+  }, [responsesLoading]);
 
   const exportToCSV = () => {
     if (responses.length === 0) {
@@ -78,7 +55,7 @@ export function ResponsesTab({ formId }: { formId: string }) {
       ['Question', 'Response', 'Date', 'Time'].join(','),
       ...responses.map(response => [
         `"${response.question_text}"`,
-        `"${response.transcription}"`,
+        `"${response.response_text}"`,
         `"${new Date(response.created_at).toLocaleDateString()}"`,
         `"${new Date(response.created_at).toLocaleTimeString()}"`
       ].join(','))
@@ -121,49 +98,6 @@ export function ResponsesTab({ formId }: { formId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Google Drive Status */}
-      {googleDriveLink ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-green-600" />
-              Google Drive Connected
-            </CardTitle>
-            <CardDescription>
-              Your responses are automatically saved to your Google Drive.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">{googleDriveLink.folder_name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Connected on {new Date(googleDriveLink.created_at).toLocaleDateString()}
-                </p>
-              </div>
-              <Button asChild variant="outline" size="sm">
-                <a href={googleDriveLink.folder_url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Open Folder
-                </a>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-gray-400" />
-              Google Drive Not Connected
-            </CardTitle>
-            <CardDescription>
-              Connect your Google Drive to automatically save responses.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
       {/* Responses Summary */}
       <Card>
         <CardHeader>
@@ -214,7 +148,7 @@ export function ResponsesTab({ formId }: { formId: string }) {
                       <div className="flex-1">
                         <h4 className="font-medium text-sm">{response.question_text}</h4>
                         <p className="text-sm text-muted-foreground mt-1">
-                          "{response.transcription}"
+                          "{response.response_text}"
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1">

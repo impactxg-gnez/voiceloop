@@ -7,14 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useRouter } from 'next/navigation';
-import { PlusCircle, Trash2, Loader2, FolderOpen } from 'lucide-react';
+import { PlusCircle, Trash2, Loader2 } from 'lucide-react';
 import { useSupabaseClient, useUser } from '@/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { FormPageManager } from '@/components/form-page-manager';
 import { DemographicsFieldsManager, type DemographicField } from '@/components/demographics-fields-manager';
 import { AISuggestionBuilder } from '@/components/ai-suggestion-builder';
-import { GoogleSheetsInfo } from '@/components/google-sheets-info';
-import { GoogleDriveLink } from '@/components/google-drive-link';
 
 type Question = {
   id: number;
@@ -619,27 +617,26 @@ export default function NewFormPage() {
           </CardContent>
         </Card>
 
-        {/* Google Drive Integration - Show during form creation */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FolderOpen className="h-5 w-5" />
-              Google Drive Integration (Optional)
-            </CardTitle>
-            <CardDescription>
-              Link your Google Drive folder to automatically save form responses. You can set this up now or after creating the form.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GoogleDriveLink formId={createdFormId || 'temp'} />
-          </CardContent>
-        </Card>
-
-        {/* Google Sheets Integration Info */}
+        {/* Form created successfully */}
         {createdFormId && (
-          <div className="max-w-2xl mx-auto mt-6 space-y-4">
-            <GoogleSheetsInfo formId={createdFormId} />
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Form Created Successfully!</CardTitle>
+              <CardDescription>
+                Your form has been created. All responses will be automatically saved to your Supabase database.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Form ID: <code className="bg-muted px-2 py-1 rounded">{createdFormId}</code>
+                </p>
+                <Button onClick={() => router.push(`/forms/record/${createdFormId}`)}>
+                  Test Your Form
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>

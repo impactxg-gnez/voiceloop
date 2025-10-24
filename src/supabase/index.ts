@@ -100,35 +100,35 @@ export type Database = {
           question_order?: number;
         };
       };
-      submissions: {
+      form_responses: {
         Row: {
           id: string;
           form_id: string;
-          question_id: string;
+          user_id: string | null;
+          question_id: string | null;
           question_text: string;
-          audio_url: string;
-          transcription: string;
-          submitter_uid: string | null;
+          response_text: string;
+          audio_url: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           form_id: string;
-          question_id: string;
+          user_id?: string | null;
+          question_id?: string | null;
           question_text: string;
-          audio_url: string;
-          transcription: string;
-          submitter_uid?: string | null;
+          response_text: string;
+          audio_url?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
           form_id?: string;
-          question_id?: string;
+          user_id?: string | null;
+          question_id?: string | null;
           question_text?: string;
-          audio_url?: string;
-          transcription?: string;
-          submitter_uid?: string | null;
+          response_text?: string;
+          audio_url?: string | null;
           created_at?: string;
         };
       };
