@@ -390,6 +390,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       try {
         const recorder = await setupMediaRecorder();
         console.log('Setup complete, MediaRecorder returned:', !!recorder);
+        console.log('Current mediaRecorder state:', !!mediaRecorder);
+        console.log('Recorder object:', recorder);
         
         if (!recorder) {
           console.error('MediaRecorder not returned from setup');
@@ -404,7 +406,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         
         console.log('MediaRecorder is ready, starting recording...');
         // Start recording after successful setup
-        await startRecording(questionIndex);
+        await startRecording(questionIndex, recorder);
       } catch (error: any) {
         console.error('Microphone setup failed:', error);
         setDebugText(`Setup failed: ${error.message}`);
@@ -421,12 +423,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     await startRecording(questionIndex);
   };
 
-  const startRecording = async (questionIndex: number) => {
+  const startRecording = async (questionIndex: number, recorder?: MediaRecorder) => {
     try {
       console.log('Starting recording for question:', questionIndex);
       
+      // Use the passed recorder or fall back to state
+      const currentRecorder = recorder || mediaRecorder;
+      
       // Double-check that MediaRecorder is available
-      if (!mediaRecorder) {
+      if (!currentRecorder) {
         console.error('MediaRecorder is null, cannot start recording');
         setDebugText('MediaRecorder not available - setup failed');
         throw new Error('MediaRecorder not available');
@@ -469,7 +474,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       }
 
       console.log('Starting MediaRecorder...');
-      mediaRecorder.start();
+      currentRecorder.start();
       console.log('MediaRecorder.start() called successfully');
       
     } catch (error: any) {
@@ -492,6 +497,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   const stopRecording = (questionIndex: number) => {
     if (mediaRecorder && activeRecordingIndex === questionIndex) {
+      console.log('Stopping MediaRecorder...');
       mediaRecorder.stop();
       setDebugText(`Stopped recording for question ${questionIndex + 1}. Processing audio...`);
 
