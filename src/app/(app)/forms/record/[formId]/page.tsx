@@ -272,6 +272,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       // Start recording
       mediaRecorder.start();
+      setProcessingProgress(0);
       
       setQuestionStates(prev => ({
         ...prev,
@@ -322,6 +323,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         }
       }));
       
+      setProcessingProgress(5);
       setDebugText('Recording stopped - processing audio...');
     }
   };
@@ -603,10 +605,10 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         )}
 
                         {/* Processing Progress Bar */}
-                        {processingProgress > 0 && (
+                        {(processingProgress > 0 || debugText.includes('processing')) && (
                             <div className="mt-4 space-y-2">
                                 <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-                                    <span>Processing audio...</span>
+                                    <span>{processingProgress < 10 ? 'Preparing audio...' : 'Processing audio...'}</span>
                                     <span>{processingProgress}%</span>
                                 </div>
                                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
