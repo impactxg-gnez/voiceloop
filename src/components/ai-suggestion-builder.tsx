@@ -117,30 +117,62 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       });
       
       console.log('Microphone access granted, setting up MediaRecorder...');
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+      
+      // Try to use audio/webm first, fallback to browser default if not supported
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        console.log('audio/webm not supported, trying audio/webm without codecs');
+        mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          console.log('audio/webm not supported, using browser default');
+          mimeType = '';
+        }
+      }
+      
+      const options = mimeType ? { mimeType } : undefined;
+      mediaRecorderRef.current = new MediaRecorder(stream, options);
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         console.log('Audio data available, size:', event.data.size);
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
       mediaRecorderRef.current.onstop = async () => {
         console.log('Recording stopped, processing audio...');
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log('Audio chunks collected:', audioChunksRef.current.length);
+        
+        const audioBlob = new Blob(audioChunksRef.current, { 
+          type: mediaRecorderRef.current?.mimeType || 'audio/webm' 
+        });
+        
         console.log('Created audio blob:', {
           size: audioBlob.size,
-          type: audioBlob.type
+          type: audioBlob.type,
+          chunks: audioChunksRef.current.length
         });
+        
+        // Check if we have valid audio data
+        if (audioBlob.size === 0) {
+          toast({
+            variant: 'destructive',
+            title: 'Recording Error',
+            description: 'No audio data captured. Please try recording for at least 1 second.',
+          });
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        
         await transcribeAudio(audioBlob);
         stream.getTracks().forEach(track => track.stop());
       };
 
-      mediaRecorderRef.current.start(1000); // Collect data every second
+      // Start recording without time slice to capture all data at once
+      mediaRecorderRef.current.start();
       setIsRecording(true);
-      console.log('Recording started');
+      console.log('Recording started with mimeType:', mediaRecorderRef.current.mimeType);
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
@@ -153,6 +185,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      // Request any remaining data before stopping
+      if (mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.requestData();
+      }
       mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
@@ -167,7 +203,9 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       });
 
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.wav');
+      // Use the actual blob type in the filename
+      const extension = audioBlob.type.includes('webm') ? 'webm' : 'wav';
+      formData.append('audio', audioBlob, `recording.${extension}`);
 
       console.log('Sending to transcription API...');
       const response = await fetch('/api/test-transcribe', {
