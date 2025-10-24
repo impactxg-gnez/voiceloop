@@ -36,7 +36,7 @@ const createGoogleDriveFolder = async (folderName: string, userId: string) => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { formId, userId, folderName } = await request.json();
+    const { formId, userId, folderId, folderUrl, folderName } = await request.json();
 
     if (!formId || !userId) {
       return NextResponse.json(
@@ -45,11 +45,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create Google Drive folder
-    const { folderId, folderUrl } = await createGoogleDriveFolder(
-      folderName || `VoiceForm Responses - ${new Date().toLocaleDateString()}`,
-      userId
-    );
+    if (!folderId || !folderUrl) {
+      return NextResponse.json(
+        { error: 'Folder ID and Folder URL are required' },
+        { status: 400 }
+      );
+    }
 
     // Save the link to database
     const supabase = getSupabaseClient();
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
         form_id: formId,
         folder_id: folderId,
         folder_url: folderUrl,
-        folder_name: folderName || `VoiceForm Responses - ${new Date().toLocaleDateString()}`,
+        folder_name: folderName || 'Google Drive Folder',
         created_at: new Date().toISOString(),
       });
 
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
       success: true,
       folderId,
       folderUrl,
-      message: 'Google Drive linked successfully',
+      message: 'Google Drive folder linked successfully',
     });
 
   } catch (error: any) {

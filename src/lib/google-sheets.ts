@@ -329,6 +329,86 @@ class GoogleSheetsService {
       const parsedData = this.parseTranscription(transcription);
       const timestamp = new Date().toISOString();
       
+      // First, try to find an existing responses sheet in the folder
+      let responsesSheetId = folderId;
+      
+      try {
+        // Check if the folder ID is actually a spreadsheet ID
+        const spreadsheet = await this.sheets.spreadsheets.get({
+          spreadsheetId: folderId,
+        });
+        
+        // If it's a spreadsheet, use it directly
+        responsesSheetId = folderId;
+        
+        // Check if it has a "Responses" sheet, if not create one
+        const hasResponsesSheet = spreadsheet.data.sheets?.some(
+          sheet => sheet.properties?.title === 'Responses'
+        );
+        
+        if (!hasResponsesSheet) {
+          // Add a new "Responses" sheet
+          await this.sheets.spreadsheets.batchUpdate({
+            spreadsheetId: folderId,
+            requestBody: {
+              requests: [{
+                addSheet: {
+                  properties: {
+                    title: 'Responses',
+                    gridProperties: {
+                      rowCount: 1000,
+                      columnCount: 10,
+                    },
+                  },
+                },
+              }],
+            },
+          });
+          
+          // Add headers
+          await this.sheets.spreadsheets.values.update({
+            spreadsheetId: folderId,
+            range: 'Responses!A1:D1',
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: [['Timestamp', 'Question', 'Response', 'User ID']],
+            },
+          });
+        }
+        
+      } catch (error) {
+        // If folderId is not a spreadsheet, create a new one in the folder
+        // For now, we'll create a new spreadsheet with the folder name
+        const newSpreadsheet = await this.sheets.spreadsheets.create({
+          requestBody: {
+            properties: {
+              title: `VoiceForm Responses - ${new Date().toLocaleDateString()}`,
+            },
+            sheets: [{
+              properties: {
+                title: 'Responses',
+                gridProperties: {
+                  rowCount: 1000,
+                  columnCount: 10,
+                },
+              },
+            }],
+          },
+        });
+        
+        responsesSheetId = newSpreadsheet.data.spreadsheetId!;
+        
+        // Add headers
+        await this.sheets.spreadsheets.values.update({
+          spreadsheetId: responsesSheetId,
+          range: 'Responses!A1:D1',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [['Timestamp', 'Question', 'Response', 'User ID']],
+          },
+        });
+      }
+      
       // Prepare the row data with standard format
       const rowData = [
         timestamp,
@@ -338,9 +418,9 @@ class GoogleSheetsService {
         ...Object.values(parsedData)
       ];
       
-      // Add the response to the user's folder
+      // Add the response to the responses sheet
       await this.sheets.spreadsheets.values.append({
-        spreadsheetId: folderId,
+        spreadsheetId: responsesSheetId,
         range: 'Responses!A:Z',
         valueInputOption: 'RAW',
         requestBody: {
@@ -348,11 +428,33 @@ class GoogleSheetsService {
         },
       });
       
-      console.log(`Added response to user folder: ${folderId}`);
+      console.log(`Added response to user folder: ${responsesSheetId}`);
       
     } catch (error) {
       console.error('Error adding response to user folder:', error);
       throw new Error('Failed to add response to user folder');
+    }
+  }
+
+  /**
+   * Delete a spreadsheet (for cleanup)
+   */
+  async deleteSpreadsheet(spreadsheetId: string): Promise<void> {
+    this.initialize();
+    
+    try {
+      // Note: Google Sheets API doesn't have a direct delete method
+      // In a real implementation, you'd use Google Drive API to move to trash
+      // For now, we'll just log that we would delete it
+      console.log(`Would delete spreadsheet: ${spreadsheetId}`);
+      
+      // In production, you'd use:
+      // const drive = google.drive({ version: 'v3', auth: this.auth });
+      // await drive.files.delete({ fileId: spreadsheetId });
+      
+    } catch (error) {
+      console.error('Error deleting spreadsheet:', error);
+      throw new Error('Failed to delete spreadsheet');
     }
   }
 

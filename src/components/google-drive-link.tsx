@@ -22,6 +22,98 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
   const [folderId, setFolderId] = useState('');
   const [folderUrl, setFolderUrl] = useState('');
   const [customFolderName, setCustomFolderName] = useState('');
+  const [driveFolderUrl, setDriveFolderUrl] = useState('');
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Extract folder ID from Google Drive URL
+  const extractFolderId = (url: string): string | null => {
+    // Handle different Google Drive URL formats
+    const patterns = [
+      /\/folders\/([a-zA-Z0-9-_]+)/,  // https://drive.google.com/drive/folders/1ABC...
+      /id=([a-zA-Z0-9-_]+)/,          // https://drive.google.com/drive/folders/1ABC...?usp=sharing
+      /\/folders\/([a-zA-Z0-9-_]+)\?/, // https://drive.google.com/drive/folders/1ABC...?usp=sharing
+    ];
+    
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    return null;
+  };
+
+  const validateDriveFolder = async (url: string): Promise<{ valid: boolean; folderId?: string; folderName?: string }> => {
+    const folderId = extractFolderId(url);
+    if (!folderId) {
+      return { valid: false };
+    }
+
+    try {
+      // Validate the folder exists and is accessible
+      const response = await fetch('/api/google-drive/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          folderId,
+          userId: user?.id,
+        }),
+      });
+
+      const data = await response.json();
+      return {
+        valid: response.ok,
+        folderId,
+        folderName: data.folderName || 'Google Drive Folder'
+      };
+    } catch (error) {
+      console.error('Error validating folder:', error);
+      return { valid: false };
+    }
+  };
+
+  const handleValidateFolder = async () => {
+    if (!driveFolderUrl.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Folder URL Required',
+        description: 'Please enter a Google Drive folder URL.',
+      });
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      const validation = await validateDriveFolder(driveFolderUrl);
+      
+      if (validation.valid) {
+        setFolderId(validation.folderId!);
+        setFolderUrl(driveFolderUrl);
+        setCustomFolderName(validation.folderName || 'Google Drive Folder');
+        
+        toast({
+          title: 'Folder Validated!',
+          description: 'Google Drive folder is ready to use.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Folder',
+          description: 'Please check the Google Drive folder URL and try again.',
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Failed',
+        description: 'Could not validate the folder. Please try again.',
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  };
 
   const handleLinkGoogleDrive = async () => {
     if (!user) {
@@ -29,6 +121,15 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
         variant: 'destructive',
         title: 'Authentication Required',
         description: 'Please sign in to link your Google Drive.',
+      });
+      return;
+    }
+
+    if (!folderId || !folderUrl) {
+      toast({
+        variant: 'destructive',
+        title: 'Folder Required',
+        description: 'Please validate a Google Drive folder first.',
       });
       return;
     }
@@ -43,23 +144,23 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
         body: JSON.stringify({
           formId,
           userId: user.id,
-          folderName: customFolderName || `VoiceForm Responses - ${new Date().toLocaleDateString()}`,
+          folderId,
+          folderUrl,
+          folderName: customFolderName || 'Google Drive Folder',
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setFolderId(data.folderId);
-        setFolderUrl(data.folderUrl);
         setIsLinked(true);
         
         toast({
           title: 'Google Drive Linked Successfully!',
-          description: 'Your responses will now be saved to your Google Drive.',
+          description: 'Your responses will now be saved to your Google Drive folder.',
         });
 
-        onLinked?.(data.folderId, data.folderUrl);
+        onLinked?.(folderId, folderUrl);
       } else {
         throw new Error(data.error || 'Failed to link Google Drive');
       }
@@ -175,17 +276,45 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="folderName">Folder Name (Optional)</Label>
-          <Input
-            id="folderName"
-            placeholder="VoiceForm Responses - December 2024"
-            value={customFolderName}
-            onChange={(e) => setCustomFolderName(e.target.value)}
-          />
+          <Label htmlFor="driveFolderUrl">Google Drive Folder URL</Label>
+          <div className="flex gap-2">
+            <Input
+              id="driveFolderUrl"
+              placeholder="https://drive.google.com/drive/folders/1ABC..."
+              value={driveFolderUrl}
+              onChange={(e) => setDriveFolderUrl(e.target.value)}
+              className="flex-1"
+            />
+            <Button 
+              onClick={handleValidateFolder}
+              disabled={isValidating || !driveFolderUrl.trim()}
+              variant="outline"
+            >
+              {isValidating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Validating...
+                </>
+              ) : (
+                'Validate'
+              )}
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
-            Leave empty to use default naming: "VoiceForm Responses - [Date]"
+            Paste the URL of your Google Drive folder where responses should be saved.
           </p>
         </div>
+
+        {folderId && (
+          <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <span className="text-sm text-green-700 dark:text-green-300">
+                Folder validated: {customFolderName}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
           <div className="flex items-start gap-2">
@@ -204,7 +333,7 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
 
         <Button 
           onClick={handleLinkGoogleDrive}
-          disabled={isLinking}
+          disabled={isLinking || !folderId}
           className="w-full"
         >
           {isLinking ? (
@@ -215,7 +344,7 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
           ) : (
             <>
               <FolderOpen className="h-4 w-4 mr-2" />
-              Link My Google Drive
+              Link This Folder
             </>
           )}
         </Button>
