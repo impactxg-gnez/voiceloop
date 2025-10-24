@@ -328,14 +328,27 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     console.log('Starting waveform drawing for question:', questionIndex);
     
     let frameCount = 0;
+    let isDrawing = true; // Local flag to control drawing
+    
     const drawFrame = () => {
       frameCount++;
       
-      // Only continue if we're still recording this question
-      if (activeRecordingIndex !== questionIndex || !questionStates[questionIndex]?.isRecording) {
-        console.log('Stopping waveform drawing - not recording question:', questionIndex);
-        console.log('Active recording index:', activeRecordingIndex);
-        console.log('Question state isRecording:', questionStates[questionIndex]?.isRecording);
+      // Check if we should continue drawing
+      if (!isDrawing) {
+        console.log('Drawing stopped by local flag');
+        return;
+      }
+      
+      // Check current state (not closure values)
+      const currentActiveIndex = activeRecordingIndex;
+      const currentQuestionState = questionStates[questionIndex];
+      
+      if (currentActiveIndex !== questionIndex || !currentQuestionState?.isRecording) {
+        console.log('Stopping waveform drawing - state check failed');
+        console.log('Current active index:', currentActiveIndex);
+        console.log('Target question index:', questionIndex);
+        console.log('Question state isRecording:', currentQuestionState?.isRecording);
+        isDrawing = false;
         return;
       }
       
@@ -527,6 +540,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       const canvas = canvasRefs.current[questionIndex];
 
+      // Set state FIRST before starting drawing
       setActiveRecordingIndex(questionIndex);
       setDebugText(`Started recording for question ${questionIndex + 1}`);
       setQuestionStates(prev => ({
@@ -614,6 +628,9 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         cancelAnimationFrame(animationFrameIds[questionIndex]);
         delete animationFrameIds[questionIndex];
       }
+      
+      // Set the local drawing flag to false to stop any ongoing drawing
+      // This will be handled by the draw function's local isDrawing flag
       
       // Clear the canvas
       const canvas = canvasRefs.current[questionIndex];
