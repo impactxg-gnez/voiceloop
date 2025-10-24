@@ -399,6 +399,11 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       
       setProcessingProgress(5);
       setDebugText('Recording stopped - processing audio...');
+      
+      // Automatically start transcription after recording stops
+      setTimeout(() => {
+        handleSubmit();
+      }, 500); // Small delay to ensure state is updated
     }
   };
 
@@ -657,12 +662,14 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={isRecording ? stopRecording : startRecording}
-                                disabled={currentQuestionState.isSubmitted}
+                                disabled={currentQuestionState.isSubmitted || currentQuestionState.isTranscribing}
                                 className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                 isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
                                 }`}
                             >
-                                {isRecording ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
+                                {isRecording ? <MicOff className="w-8 h-8 text-white" /> : 
+                                 currentQuestionState.isTranscribing ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : 
+                                 <Mic className="w-8 h-8 text-white" />}
                             </button>
                             <div className="flex flex-col items-center">
                                 <canvas 
@@ -678,7 +685,9 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         </div>
                         
                         <p className="text-sm text-muted-foreground h-5">
-                            {isRecording ? `Recording... (Level: ${Math.round(audioLevel)}%)` : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
+                            {isRecording ? `Recording... (Level: ${Math.round(audioLevel)}%)` : 
+                             currentQuestionState.isTranscribing ? 'Processing audio...' :
+                             (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
                         </p>
                         
                         {debugText && (

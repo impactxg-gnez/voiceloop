@@ -293,10 +293,50 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   };
 
   const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('Stopping recording, processing audio chunks:', audioChunksRef.current.length);
+      
+      mediaRecorderRef.current.stop();
+      
+      // Validate audio data
+      if (audioChunksRef.current.length === 0) {
+        setDebugText('No audio data recorded - please try again');
+        setIsRecording(false);
+        setIsProcessingVoice(false);
+        return;
+      }
+      
+      const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      console.log('Audio blob created:', {
+        size: blob.size,
+        type: blob.type
+      });
+      
+      // Clean up recording state
+      recordStartRef.current = null;
+      setRecordMs(0);
+      setIsProcessingVoice(true);
+      setProcessingProgress(5);
+      setDebugText('Processing voice input...');
+      
+      // Automatically start transcription after recording stops
+      setTimeout(() => {
+        transcribeWithServer(blob);
+      }, 500);
+      
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      try { 
+        audioCtxRef.current?.close(); 
+      } catch {}
+      audioCtxRef.current = null;
+      analyserRef.current = null;
+    }
+    
     mediaRecorderRef.current = null;
     setIsRecording(false);
-    if (frameRef.current) cancelAnimationFrame(frameRef.current);
   };
 
   const handleSubmit = async () => {
@@ -424,7 +464,9 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
               {isRecording ? (
                 <Button onClick={stopRecording}>Stop</Button>
               ) : (
-                <Button onClick={startRecording}>Start</Button>
+                <Button onClick={startRecording} disabled={isProcessingVoice}>
+                  {isProcessingVoice ? 'Processing...' : 'Start'}
+                </Button>
               )}
               <Button variant="outline" onClick={() => { try { window.speechSynthesis.cancel(); } catch {}; if (isRecording) stopRecording(); setMode(mode === 'voice' ? 'text' : 'voice'); }}>
                 Switch to {mode === 'voice' ? 'text' : 'voice'}
