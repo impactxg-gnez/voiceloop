@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET() {
   return NextResponse.json({
     success: true,
-    message: 'Basic API test endpoint is working - v2',
+    message: 'Basic API test endpoint is working - v3',
     timestamp: new Date().toISOString(),
-    version: '2.0.0',
-    deployment: 'forced-redeploy'
+    version: '3.0.0',
+    deployment: 'manual-trigger',
+    status: 'testing-deployment-fix'
   });
 }
 
