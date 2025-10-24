@@ -252,8 +252,10 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       // Handle data
       audioChunksRef.current = [];
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+          console.log('Audio chunk received:', event.data.size, 'bytes');
+          setDebugText(`Recording... (${audioChunksRef.current.length} chunks, ${event.data.size} bytes)`);
         }
       };
 
@@ -297,7 +299,28 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('Stopping recording, processing audio chunks:', audioChunksRef.current.length);
+      
       mediaRecorderRef.current.stop();
+      
+      // Validate audio data
+      if (audioChunksRef.current.length === 0) {
+        setDebugText('No audio data recorded - please try again');
+        setQuestionStates(prev => ({
+          ...prev,
+          [currentQuestionIndex]: {
+            ...prev[currentQuestionIndex],
+            isRecording: false,
+          }
+        }));
+        return;
+      }
+      
+      const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      console.log('Audio blob created:', {
+        size: blob.size,
+        type: blob.type
+      });
       
       // Stop waveform drawing
       if (animationFrameRef.current) {
@@ -351,6 +374,11 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     setDebugText('Preparing audio for transcription...');
     
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    console.log('Audio blob details for transcription:', {
+      size: audioBlob.size,
+      type: audioBlob.type,
+      chunks: audioChunks.length
+    });
     
     try {
       // Step 1: Insert placeholder row (10%)
@@ -394,6 +422,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         body: formData,
       });
       
+      console.log('Transcription response status:', transcriptionResponse.status);
+      
       clearInterval(progressInterval);
       
       if (!transcriptionResponse.ok) {
@@ -404,6 +434,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       setDebugText('Processing transcription results...');
       
       const transcriptionResult = await transcriptionResponse.json();
+      console.log('Transcription result:', transcriptionResult);
+      
       const transcriptionText = transcriptionResult.transcription || 'transcription unavailable';
       
       // Step 3: Update database with transcription (80%)
