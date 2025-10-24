@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mic, MicOff, Send, Loader2, CheckCircle, Play, Volume2, ArrowLeft, ArrowRight } from 'lucide-react';
-import { transcribeVoiceResponse } from '@/ai/flows/transcribe-voice-responses';
 import { generateQuestionAudio } from '@/ai/flows/generate-question-audio';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
@@ -475,88 +474,95 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     setDebugText(`Transcribing audio for question ${questionIndex + 1}...`);
     
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    const reader = new FileReader();
-    reader.readAsDataURL(audioBlob);
-    reader.onloadend = async () => {
-      const base64Audio = reader.result as string;
+    
+    try {
+      // 1) Insert placeholder row so a response always appears immediately
+      const { data: inserted, error: insertError } = await supabase
+        .from('submissions')
+        .insert({
+          form_id: formId,
+          question_id: questions[questionIndex].id,
+          question_text: questions[questionIndex].text,
+          audio_url: '', // optional: upload to storage and set URL
+          transcription: 'processing…',
+          submitter_uid: user?.id ?? null,
+        })
+        .select('id')
+        .single();
+
+      if (insertError) throw insertError;
+
+      // 2) Transcribe and update in-place using API endpoint
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
       
-      try {
-        // 1) Insert placeholder row so a response always appears immediately
-        const { data: inserted, error: insertError } = await supabase
-          .from('submissions')
-          .insert({
-            form_id: formId,
-            question_id: questions[questionIndex].id,
-            question_text: questions[questionIndex].text,
-            audio_url: '', // optional: upload to storage and set URL
-            transcription: 'processing…',
-            submitter_uid: user?.id ?? null,
-          })
-          .select('id')
-          .single();
-
-        if (insertError) throw insertError;
-
-        // 2) Transcribe and update in-place
-        const result = await transcribeVoiceResponse({ audioPath: base64Audio });
-        const transcriptionText = result.text || 'transcription unavailable';
-        
-        await supabase
-          .from('submissions')
-          .update({ transcription: transcriptionText })
-          .eq('id', inserted.id);
-
-        // 3) Send to Google Sheets for structured data extraction
-        try {
-          const sheetsResponse = await fetch('/api/google-sheets', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              formId: formId,
-              transcription: transcriptionText,
-              questionText: questions[questionIndex].text,
-            }),
-          });
-
-          if (sheetsResponse.ok) {
-            const sheetsData = await sheetsResponse.json();
-            console.log('Google Sheets response:', sheetsData);
-            setDebugText(`Transcription complete: "${transcriptionText}" | Added to Google Sheets`);
-          } else {
-            console.error('Google Sheets error:', await sheetsResponse.text());
-            setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets failed`);
-          }
-        } catch (sheetsError) {
-          console.error('Error sending to Google Sheets:', sheetsError);
-          setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets error`);
-        }
-
-        toast({
-          title: 'Feedback Submitted!',
-          description: `Transcription: "${transcriptionText}"`,
-        });
-        setQuestionStates(prev => ({
-          ...prev,
-          [questionIndex]: {
-            ...prev[questionIndex],
-            isSubmitted: true,
-            transcription: transcriptionText,
-            isTranscribing: false,
-          }
-        }));
-      } catch (error) {
-        console.error('Error transcribing audio:', error);
-        setDebugText(`Transcription failed: ${error}`);
-        toast({
-          variant: 'destructive',
-          title: 'Submission Failed',
-          description: 'Could not transcribe your audio. Please try again.',
-        });
-        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: false } }));
+      const transcriptionResponse = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!transcriptionResponse.ok) {
+        throw new Error(`Transcription failed: ${transcriptionResponse.status}`);
       }
-    };
+      
+      const transcriptionResult = await transcriptionResponse.json();
+      const transcriptionText = transcriptionResult.transcription || 'transcription unavailable';
+        
+      await supabase
+        .from('submissions')
+        .update({ transcription: transcriptionText })
+        .eq('id', inserted.id);
+
+      // 3) Send to Google Sheets for structured data extraction
+      try {
+        const sheetsResponse = await fetch('/api/google-sheets', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            formId: formId,
+            transcription: transcriptionText,
+            questionText: questions[questionIndex].text,
+          }),
+        });
+
+        if (sheetsResponse.ok) {
+          const sheetsData = await sheetsResponse.json();
+          console.log('Google Sheets response:', sheetsData);
+          setDebugText(`Transcription complete: "${transcriptionText}" | Added to Google Sheets`);
+        } else {
+          console.error('Google Sheets error:', await sheetsResponse.text());
+          setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets failed`);
+        }
+      } catch (sheetsError) {
+        console.error('Error sending to Google Sheets:', sheetsError);
+        setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets error`);
+      }
+
+      toast({
+        title: 'Feedback Submitted!',
+        description: `Transcription: "${transcriptionText}"`,
+      });
+      setQuestionStates(prev => ({
+        ...prev,
+        [questionIndex]: {
+          ...prev[questionIndex],
+          isSubmitted: true,
+          transcription: transcriptionText,
+          isTranscribing: false,
+        }
+      }));
+    } catch (error) {
+      console.error('Error transcribing audio:', error);
+      setDebugText(`Transcription failed: ${error}`);
+      toast({
+        variant: 'destructive',
+        title: 'Submission Failed',
+        description: 'Could not transcribe your audio. Please try again.',
+      });
+      setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: false } }));
+    }
   };
 
   const isLoading = isLoadingForm || isLoadingQuestions || isLoadingPages;
