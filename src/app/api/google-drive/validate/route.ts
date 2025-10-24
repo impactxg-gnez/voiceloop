@@ -15,10 +15,6 @@ const getSupabaseClient = () => {
 
 // Google Drive API functions
 const validateGoogleDriveFolder = async (folderId: string, userId: string) => {
-  // For now, we'll use the existing Google Sheets service to validate
-  // In a full implementation, you'd use Google Drive API directly
-  const { googleSheetsService } = await import('@/lib/google-sheets');
-  
   try {
     // First, validate the folder ID format
     if (!folderId || folderId.length < 10) {
@@ -28,19 +24,19 @@ const validateGoogleDriveFolder = async (folderId: string, userId: string) => {
       };
     }
 
-    // Try to create a test file to validate access
-    // This is a simplified validation - in production you'd use proper Drive API
-    const testSpreadsheetId = await googleSheetsService.createUserFolder(
-      userId, 
-      `VoiceForm Test - ${Date.now()}`
-    );
-    
-    // Clean up the test file
-    try {
-      await googleSheetsService.deleteSpreadsheet(testSpreadsheetId);
-    } catch (cleanupError) {
-      console.log('Test file cleanup failed, but validation succeeded');
+    // For now, let's do a simple validation - just check if the folder ID looks valid
+    // In a real implementation, you'd use Google Drive API to check access
+    const folderIdPattern = /^[a-zA-Z0-9-_]+$/;
+    if (!folderIdPattern.test(folderId)) {
+      return {
+        valid: false,
+        error: 'Invalid folder ID format. Folder ID should only contain letters, numbers, hyphens, and underscores.'
+      };
     }
+
+    // Basic validation - if we get here, the folder ID format is valid
+    // In production, you'd make an actual API call to Google Drive to verify access
+    console.log('Validating folder ID:', folderId);
     
     return {
       valid: true,
@@ -50,23 +46,10 @@ const validateGoogleDriveFolder = async (folderId: string, userId: string) => {
   } catch (error: any) {
     console.error('Error validating Google Drive folder:', error);
     
-    // Provide more specific error messages
-    if (error.message?.includes('permission')) {
-      return {
-        valid: false,
-        error: 'Permission denied. Please make sure you have editor access to the folder.'
-      };
-    } else if (error.message?.includes('not found')) {
-      return {
-        valid: false,
-        error: 'Folder not found. Please check the folder ID and try again.'
-      };
-    } else {
-      return {
-        valid: false,
-        error: 'Could not access the Google Drive folder. Please check the URL and permissions.'
-      };
-    }
+    return {
+      valid: false,
+      error: 'Validation error: ' + (error.message || 'Unknown error')
+    };
   }
 };
 

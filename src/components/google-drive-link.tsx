@@ -47,7 +47,11 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
   };
 
   const validateDriveFolder = async (url: string): Promise<{ valid: boolean; folderId?: string; folderName?: string; error?: string }> => {
+    console.log('Validating URL:', url);
+    
     const folderId = extractFolderId(url);
+    console.log('Extracted folder ID:', folderId);
+    
     if (!folderId) {
       return { 
         valid: false, 
@@ -56,6 +60,8 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
     }
 
     try {
+      console.log('Sending validation request for folder ID:', folderId);
+      
       // Validate the folder exists and is accessible
       const response = await fetch('/api/google-drive/validate', {
         method: 'POST',
@@ -68,7 +74,10 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
         }),
       });
 
+      console.log('Validation response status:', response.status);
+      
       const data = await response.json();
+      console.log('Validation response data:', data);
       
       if (response.ok) {
         return {
