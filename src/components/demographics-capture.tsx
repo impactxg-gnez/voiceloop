@@ -174,8 +174,20 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1,
+          sampleSize: 16
+        } 
+      });
+      const recorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 128000
+      });
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
@@ -231,11 +243,19 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
       frameRef.current = requestAnimationFrame(tick);
       // waveform setup
       try {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
+          sampleRate: 44100
+        });
         audioCtxRef.current = audioCtx;
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512;
+        
+        // Better analyser settings for music and speech
+        analyser.fftSize = 4096;
+        analyser.smoothingTimeConstant = 0.3;
+        analyser.minDecibels = -90;
+        analyser.maxDecibels = -10;
+        
         source.connect(analyser);
         analyserRef.current = analyser;
 

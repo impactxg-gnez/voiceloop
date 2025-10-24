@@ -56,6 +56,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [debugText, setDebugText] = useState('');
   const [processingProgress, setProcessingProgress] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   // Audio recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -193,29 +194,42 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     const analyser = analyserRef.current;
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
+    const frequencyData = new Uint8Array(bufferLength);
 
     const draw = () => {
+      // Get both time domain and frequency data for better visualization
       analyser.getByteTimeDomainData(dataArray);
+      analyser.getByteFrequencyData(frequencyData);
 
-      // Clear canvas
-      ctx.fillStyle = '#1a1a1a';
+      // Clear canvas with gradient background
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, '#0f172a');
+      gradient.addColorStop(1, '#1e293b');
+      ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw center line
-      ctx.strokeStyle = '#333';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height / 2);
-      ctx.lineTo(canvas.width, canvas.height / 2);
-      ctx.stroke();
+      // Draw frequency bars for music visualization
+      const barWidth = canvas.width / bufferLength * 2.5;
+      let x = 0;
+      
+      for (let i = 0; i < bufferLength; i++) {
+        const barHeight = (frequencyData[i] / 255) * canvas.height;
+        
+        // Color based on frequency (bass = red, mid = green, treble = blue)
+        const hue = (i / bufferLength) * 360;
+        ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+        
+        x += barWidth + 1;
+      }
 
-      // Draw waveform
+      // Draw waveform line on top
       ctx.strokeStyle = '#3b82f6';
       ctx.lineWidth = 2;
       ctx.beginPath();
 
       const sliceWidth = canvas.width / bufferLength;
-      let x = 0;
+      x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
         const v = dataArray[i] / 128.0;
@@ -231,6 +245,23 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       ctx.stroke();
 
+      // Draw center line
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+
+      // Calculate and update audio level for feedback
+      let sum = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        sum += dataArray[i];
+      }
+      const average = sum / bufferLength;
+      const level = Math.min(100, (average / 128) * 100);
+      setAudioLevel(level);
+
       animationFrameRef.current = requestAnimationFrame(draw);
     };
 
@@ -241,12 +272,24 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     try {
       setDebugText('Setting up microphone...');
       
-      // Get microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Get microphone access with optimized settings for music and speech
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1,
+          sampleSize: 16
+        } 
+      });
       audioStreamRef.current = stream;
       
-      // Create MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream);
+      // Create MediaRecorder with optimized settings
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 128000
+      });
       mediaRecorderRef.current = mediaRecorder;
       
       // Handle data
@@ -259,13 +302,21 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         }
       };
 
-      // Setup audio context for waveform
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // Setup audio context for waveform with better settings
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: 44100
+      });
       audioContextRef.current = audioContext;
       
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
+      
+      // Better analyser settings for music and speech
+      analyser.fftSize = 4096; // Higher resolution for better frequency analysis
+      analyser.smoothingTimeConstant = 0.3; // Less smoothing for more responsive visualization
+      analyser.minDecibels = -90; // Lower threshold to detect quieter sounds
+      analyser.maxDecibels = -10; // Higher threshold to prevent clipping
+      
       source.connect(analyser);
       analyserRef.current = analyser;
 
@@ -627,7 +678,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         </div>
                         
                         <p className="text-sm text-muted-foreground h-5">
-                            {isRecording ? 'Recording...' : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
+                            {isRecording ? `Recording... (Level: ${Math.round(audioLevel)}%)` : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
                         </p>
                         
                         {debugText && (
