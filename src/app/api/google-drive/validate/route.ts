@@ -20,7 +20,15 @@ const validateGoogleDriveFolder = async (folderId: string, userId: string) => {
   const { googleSheetsService } = await import('@/lib/google-sheets');
   
   try {
-    // Try to create a test file in the folder to validate access
+    // First, validate the folder ID format
+    if (!folderId || folderId.length < 10) {
+      return {
+        valid: false,
+        error: 'Invalid folder ID format'
+      };
+    }
+
+    // Try to create a test file to validate access
     // This is a simplified validation - in production you'd use proper Drive API
     const testSpreadsheetId = await googleSheetsService.createUserFolder(
       userId, 
@@ -39,12 +47,26 @@ const validateGoogleDriveFolder = async (folderId: string, userId: string) => {
       folderName: 'Google Drive Folder',
       folderId
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error validating Google Drive folder:', error);
-    return {
-      valid: false,
-      error: 'Could not access the specified Google Drive folder'
-    };
+    
+    // Provide more specific error messages
+    if (error.message?.includes('permission')) {
+      return {
+        valid: false,
+        error: 'Permission denied. Please make sure you have editor access to the folder.'
+      };
+    } else if (error.message?.includes('not found')) {
+      return {
+        valid: false,
+        error: 'Folder not found. Please check the folder ID and try again.'
+      };
+    } else {
+      return {
+        valid: false,
+        error: 'Could not access the Google Drive folder. Please check the URL and permissions.'
+      };
+    }
   }
 };
 

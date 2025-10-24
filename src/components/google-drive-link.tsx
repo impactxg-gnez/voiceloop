@@ -27,6 +27,9 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
 
   // Extract folder ID from Google Drive URL
   const extractFolderId = (url: string): string | null => {
+    // Clean the URL first - remove any trailing quotes or whitespace
+    const cleanUrl = url.trim().replace(/['"]+$/, '');
+    
     // Handle different Google Drive URL formats
     const patterns = [
       /\/folders\/([a-zA-Z0-9-_]+)/,  // https://drive.google.com/drive/folders/1ABC...
@@ -35,7 +38,7 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
     ];
     
     for (const pattern of patterns) {
-      const match = url.match(pattern);
+      const match = cleanUrl.match(pattern);
       if (match) {
         return match[1];
       }
@@ -43,10 +46,13 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
     return null;
   };
 
-  const validateDriveFolder = async (url: string): Promise<{ valid: boolean; folderId?: string; folderName?: string }> => {
+  const validateDriveFolder = async (url: string): Promise<{ valid: boolean; folderId?: string; folderName?: string; error?: string }> => {
     const folderId = extractFolderId(url);
     if (!folderId) {
-      return { valid: false };
+      return { 
+        valid: false, 
+        error: 'Invalid Google Drive URL format. Please make sure the URL contains a folder ID.' 
+      };
     }
 
     try {
@@ -63,14 +69,25 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
       });
 
       const data = await response.json();
-      return {
-        valid: response.ok,
-        folderId,
-        folderName: data.folderName || 'Google Drive Folder'
-      };
+      
+      if (response.ok) {
+        return {
+          valid: true,
+          folderId,
+          folderName: data.folderName || 'Google Drive Folder'
+        };
+      } else {
+        return {
+          valid: false,
+          error: data.error || 'Could not access the Google Drive folder. Please check permissions.'
+        };
+      }
     } catch (error) {
       console.error('Error validating folder:', error);
-      return { valid: false };
+      return { 
+        valid: false, 
+        error: 'Network error. Please check your connection and try again.' 
+      };
     }
   };
 
@@ -101,7 +118,7 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
         toast({
           variant: 'destructive',
           title: 'Invalid Folder',
-          description: 'Please check the Google Drive folder URL and try again.',
+          description: validation.error || 'Please check the Google Drive folder URL and try again.',
         });
       }
     } catch (error) {
@@ -291,7 +308,11 @@ export function GoogleDriveLink({ formId, onLinked }: GoogleDriveLinkProps) {
               id="driveFolderUrl"
               placeholder="https://drive.google.com/drive/folders/1ABC..."
               value={driveFolderUrl}
-              onChange={(e) => setDriveFolderUrl(e.target.value)}
+              onChange={(e) => {
+                // Clean the input by removing trailing quotes and whitespace
+                const cleanedValue = e.target.value.trim().replace(/['"]+$/, '');
+                setDriveFolderUrl(cleanedValue);
+              }}
               className="flex-1"
             />
             <Button 
