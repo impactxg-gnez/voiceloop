@@ -598,6 +598,13 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       setDebugText('Sending data to Google Sheets...');
       
       try {
+        console.log('Sending to Google Sheets:', {
+          formId: formId,
+          transcription: transcriptionText,
+          questionText: questions[currentQuestionIndex].text,
+          userId: user?.id,
+        });
+        
         const sheetsResponse = await fetch('/api/google-sheets', {
           method: 'POST',
           headers: {
@@ -611,13 +618,16 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           }),
         });
 
+        console.log('Google Sheets response status:', sheetsResponse.status);
+        
         if (sheetsResponse.ok) {
           const sheetsData = await sheetsResponse.json();
           console.log('Google Sheets response:', sheetsData);
           setDebugText(`Transcription complete: "${transcriptionText}" | Added to Google Sheets`);
         } else {
-          console.error('Google Sheets error:', await sheetsResponse.text());
-          setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets failed`);
+          const errorData = await sheetsResponse.json();
+          console.error('Google Sheets error:', errorData);
+          setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets error: ${errorData.error}`);
         }
       } catch (sheetsError) {
         console.error('Error sending to Google Sheets:', sheetsError);

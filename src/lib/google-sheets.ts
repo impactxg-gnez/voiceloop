@@ -329,85 +329,46 @@ class GoogleSheetsService {
       const parsedData = this.parseTranscription(transcription);
       const timestamp = new Date().toISOString();
       
-      // First, try to find an existing responses sheet in the folder
-      let responsesSheetId = folderId;
+      console.log('Adding response to user folder:', { folderId, transcription, questionText, userId });
       
-      try {
-        // Check if the folder ID is actually a spreadsheet ID
-        const spreadsheet = await this.sheets.spreadsheets.get({
-          spreadsheetId: folderId,
-        });
-        
-        // If it's a spreadsheet, use it directly
-        responsesSheetId = folderId;
-        
-        // Check if it has a "Responses" sheet, if not create one
-        const hasResponsesSheet = spreadsheet.data.sheets?.some(
-          sheet => sheet.properties?.title === 'Responses'
-        );
-        
-        if (!hasResponsesSheet) {
-          // Add a new "Responses" sheet
-          await this.sheets.spreadsheets.batchUpdate({
-            spreadsheetId: folderId,
-            requestBody: {
-              requests: [{
-                addSheet: {
-                  properties: {
-                    title: 'Responses',
-                    gridProperties: {
-                      rowCount: 1000,
-                      columnCount: 10,
-                    },
-                  },
-                },
-              }],
-            },
-          });
-          
-          // Add headers
-          await this.sheets.spreadsheets.values.update({
-            spreadsheetId: folderId,
-            range: 'Responses!A1:D1',
-            valueInputOption: 'RAW',
-            requestBody: {
-              values: [['Timestamp', 'Question', 'Response', 'User ID']],
-            },
-          });
-        }
-        
-      } catch (error) {
-        // If folderId is not a spreadsheet, create a new one in the folder
-        // For now, we'll create a new spreadsheet with the folder name
-        const newSpreadsheet = await this.sheets.spreadsheets.create({
-          requestBody: {
+      // For now, we'll create a new spreadsheet for each form
+      // In a full implementation, you'd use Google Drive API to create files in specific folders
+      const spreadsheetTitle = `VoiceForm Responses - ${new Date().toLocaleDateString()} - ${userId}`;
+      
+      console.log('Creating new spreadsheet:', spreadsheetTitle);
+      
+      // Create a new spreadsheet
+      const newSpreadsheet = await this.sheets.spreadsheets.create({
+        requestBody: {
+          properties: {
+            title: spreadsheetTitle,
+          },
+          sheets: [{
             properties: {
-              title: `VoiceForm Responses - ${new Date().toLocaleDateString()}`,
-            },
-            sheets: [{
-              properties: {
-                title: 'Responses',
-                gridProperties: {
-                  rowCount: 1000,
-                  columnCount: 10,
-                },
+              title: 'Responses',
+              gridProperties: {
+                rowCount: 1000,
+                columnCount: 10,
               },
-            }],
-          },
-        });
-        
-        responsesSheetId = newSpreadsheet.data.spreadsheetId!;
-        
-        // Add headers
-        await this.sheets.spreadsheets.values.update({
-          spreadsheetId: responsesSheetId,
-          range: 'Responses!A1:D1',
-          valueInputOption: 'RAW',
-          requestBody: {
-            values: [['Timestamp', 'Question', 'Response', 'User ID']],
-          },
-        });
-      }
+            },
+          }],
+        },
+      });
+      
+      const spreadsheetId = newSpreadsheet.data.spreadsheetId!;
+      console.log('Created spreadsheet with ID:', spreadsheetId);
+      
+      // Add headers
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId: spreadsheetId,
+        range: 'Responses!A1:D1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['Timestamp', 'Question', 'Response', 'User ID']],
+        },
+      });
+      
+      console.log('Added headers to spreadsheet');
       
       // Prepare the row data with standard format
       const rowData = [
@@ -418,9 +379,11 @@ class GoogleSheetsService {
         ...Object.values(parsedData)
       ];
       
+      console.log('Adding row data:', rowData);
+      
       // Add the response to the responses sheet
       await this.sheets.spreadsheets.values.append({
-        spreadsheetId: responsesSheetId,
+        spreadsheetId: spreadsheetId,
         range: 'Responses!A:Z',
         valueInputOption: 'RAW',
         requestBody: {
@@ -428,11 +391,11 @@ class GoogleSheetsService {
         },
       });
       
-      console.log(`Added response to user folder: ${responsesSheetId}`);
+      console.log(`Successfully added response to user folder: ${spreadsheetId}`);
       
     } catch (error) {
       console.error('Error adding response to user folder:', error);
-      throw new Error('Failed to add response to user folder');
+      throw new Error('Failed to add response to user folder: ' + (error as any)?.message);
     }
   }
 

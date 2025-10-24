@@ -90,16 +90,25 @@ export async function POST(request: NextRequest) {
     if (userDriveLink) {
       // Use user-specific Google Drive folder
       console.log('Using user-specific Google Drive folder:', userDriveLink.folder_id);
-      await googleSheetsService.addResponseToUserFolder(
-        userDriveLink.folder_id,
-        transcription,
-        questionText || 'Voice Response',
-        userId || 'anonymous'
-      );
+      console.log('User drive link details:', userDriveLink);
       
-      sheetUrl = userDriveLink.folder_url;
-      spreadsheetId = userDriveLink.folder_id;
-      result = { success: true, userFolder: true };
+      try {
+        await googleSheetsService.addResponseToUserFolder(
+          userDriveLink.folder_id,
+          transcription,
+          questionText || 'Voice Response',
+          userId || 'anonymous'
+        );
+        
+        sheetUrl = userDriveLink.folder_url;
+        spreadsheetId = userDriveLink.folder_id;
+        result = { success: true, userFolder: true };
+        
+        console.log('Successfully added response to user folder');
+      } catch (error) {
+        console.error('Error adding response to user folder:', error);
+        throw new Error('Failed to add response to user folder: ' + (error as any)?.message);
+      }
     } else {
       // Use default form sheet
       const sheetConfig = await googleSheetsService.createOrGetSheet(formId, form.title);
