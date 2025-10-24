@@ -104,17 +104,24 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         
         recorder.ondataavailable = (event) => {
             console.log('Audio data available:', event.data.size, 'bytes');
-            if (activeRecordingIndex !== null) {
+            if (event.data && event.data.size > 0) {
               setQuestionStates(prev => {
-                const currentQuestionState = prev[activeRecordingIndex!];
-                if (!currentQuestionState) return prev;
-                return {
-                  ...prev,
-                  [activeRecordingIndex!]: {
-                    ...currentQuestionState,
-                    audioChunks: [...currentQuestionState.audioChunks, event.data],
-                  },
+                // Find the currently recording question
+                const recordingQuestion = Object.keys(prev).find(key => 
+                  prev[parseInt(key)].isRecording
+                );
+                if (recordingQuestion) {
+                  const questionIndex = parseInt(recordingQuestion);
+                  const currentQuestionState = prev[questionIndex];
+                  return {
+                    ...prev,
+                    [questionIndex]: {
+                      ...currentQuestionState,
+                      audioChunks: [...currentQuestionState.audioChunks, event.data],
+                    },
+                  };
                 }
+                return prev;
               });
             }
         };
@@ -303,13 +310,18 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
     const canvasCtx = canvas.getContext('2d');
-    if (!canvasCtx) return;
+    if (!canvasCtx) {
+      console.error('Could not get canvas context');
+      return;
+    }
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    console.log('Starting waveform drawing for question:', questionIndex);
     
     const drawFrame = () => {
       // Only continue if we're still recording this question
       if (activeRecordingIndex !== questionIndex || !questionStates[questionIndex]?.isRecording) {
+        console.log('Stopping waveform drawing - not recording question:', questionIndex);
         return;
       }
       
@@ -320,7 +332,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       canvasCtx.fillStyle = '#1a1a1a';
       canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw grid lines
+      // Draw center line
       canvasCtx.strokeStyle = '#333';
       canvasCtx.lineWidth = 1;
       canvasCtx.beginPath();
@@ -335,6 +347,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       const sliceWidth = canvas.width / analyser.frequencyBinCount;
       let x = 0;
+      let hasData = false;
 
       for (let i = 0; i < analyser.frequencyBinCount; i++) {
           const v = dataArray[i] / 128.0;
@@ -346,9 +359,19 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
               canvasCtx.lineTo(x, y);
           }
           x += sliceWidth;
+          
+          // Check if we have any significant audio data
+          if (Math.abs(v) > 0.1) {
+            hasData = true;
+          }
       }
 
       canvasCtx.stroke();
+      
+      // Log waveform activity occasionally
+      if (hasData && Math.random() < 0.01) { // 1% chance to log
+        console.log('Waveform drawing - audio data detected');
+      }
     };
     
     drawFrame();
@@ -450,7 +473,11 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       const analyser = audioContextRef.current.createAnalyser();
       analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.8;
+      
+      // Connect the audio stream to the analyser
       audioStreamSourceRef.current.connect(analyser);
+      console.log('Analyser connected to audio stream source');
 
       const canvas = canvasRefs.current[questionIndex];
 
@@ -467,7 +494,13 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       }));
 
       if (canvas) {
-        console.log('Starting waveform visualization...');
+        console.log('Starting waveform visualization on canvas:', canvas);
+        // Clear canvas first
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#1a1a1a';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
         draw(analyser, canvas, questionIndex);
       } else {
         console.warn('Canvas not found for waveform visualization');
@@ -500,6 +533,18 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       console.log('Stopping MediaRecorder...');
       mediaRecorder.stop();
       setDebugText(`Stopped recording for question ${questionIndex + 1}. Processing audio...`);
+      
+      // Add timeout to prevent hanging
+      setTimeout(() => {
+        if (questionStates[questionIndex]?.isTranscribing) {
+          console.warn('Processing timeout - resetting state');
+          setDebugText('Processing timeout - please try again');
+          setQuestionStates(prev => ({
+            ...prev,
+            [questionIndex]: { ...prev[questionIndex], isTranscribing: false }
+          }));
+        }
+      }, 10000); // 10 second timeout
 
       const state = questionStates[questionIndex];
       if (state.analyser && audioStreamSourceRef.current) {
@@ -748,7 +793,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                                     className="rounded-md bg-gray-900 border border-gray-700"
                                 ></canvas>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    {isRecordingThis ? 'Recording...' : (microphoneReady ? 'Ready to record' : 'Click mic to setup & record')}
+                                    {isRecordingThis ? '🔴 Recording...' : (microphoneReady ? 'Ready to record' : 'Click mic to setup & record')}
                                 </p>
                             </div>
                         </div>
