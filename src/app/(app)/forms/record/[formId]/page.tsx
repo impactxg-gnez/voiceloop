@@ -232,15 +232,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
-        const v = dataArray[i] / 128.0;
+          const v = dataArray[i] / 128.0;
         const y = (v * canvas.height / 2) + (canvas.height / 2);
 
-        if (i === 0) {
+          if (i === 0) {
           ctx.moveTo(x, y);
-        } else {
+          } else {
           ctx.lineTo(x, y);
-        }
-        x += sliceWidth;
+          }
+          x += sliceWidth;
       }
 
       ctx.stroke();
@@ -270,9 +270,6 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   const startRecording = async () => {
     try {
-      setDebugText('Setting up microphone...');
-      
-      // Get microphone access with optimized settings for music and speech
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -283,64 +280,131 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           sampleSize: 16
         } 
       });
-      audioStreamRef.current = stream;
-      
-      // Create MediaRecorder with optimized settings
-      const mediaRecorder = new MediaRecorder(stream, {
+      const recorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus',
         audioBitsPerSecond: 128000
       });
-      mediaRecorderRef.current = mediaRecorder;
-      
-      // Handle data
       audioChunksRef.current = [];
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-          console.log('Audio chunk received:', event.data.size, 'bytes');
-          setDebugText(`Recording... (${audioChunksRef.current.length} chunks, ${event.data.size} bytes)`);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+          console.log('Audio chunk received:', e.data.size, 'bytes');
+          setDebugText(`Recording... (${audioChunksRef.current.length} chunks, ${e.data.size} bytes)`);
         }
       };
-
-      // Setup audio context for waveform with better settings
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-        sampleRate: 44100
-      });
-      audioContextRef.current = audioContext;
-      
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      
-      // Better analyser settings for music and speech
-      analyser.fftSize = 4096; // Higher resolution for better frequency analysis
-      analyser.smoothingTimeConstant = 0.3; // Less smoothing for more responsive visualization
-      analyser.minDecibels = -90; // Lower threshold to detect quieter sounds
-      analyser.maxDecibels = -10; // Higher threshold to prevent clipping
-      
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      // Start waveform drawing
-      drawWaveform();
-
-      // Start recording
-      mediaRecorder.start();
+      recorder.onstop = async () => {
+        console.log('Recording stopped, processing audio chunks:', audioChunksRef.current.length);
+        
+        if (audioChunksRef.current.length === 0) {
+          setDebugText('No audio data recorded - please try again');
+          setQuestionStates(prev => ({ 
+            ...prev, 
+            [currentQuestionIndex]: { 
+              ...prev[currentQuestionIndex], 
+              isRecording: false 
+            } 
+          }));
+          return;
+        }
+        
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log('Audio blob created:', {
+          size: blob.size,
+          type: blob.type
+        });
+        
+        setQuestionStates(prev => ({
+          ...prev,
+          [currentQuestionIndex]: {
+            ...prev[currentQuestionIndex],
+            isRecording: false,
+            audioChunks: [...audioChunksRef.current],
+          }
+        }));
+        
+        setProcessingProgress(5);
+        setDebugText('Processing voice input...');
+        
+        // Use server-side transcription directly for reliability
+        setDebugText('Using server-side transcription...');
+        await transcribeWithServer(blob);
+        
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        try { 
+          audioContextRef.current?.close(); 
+        } catch {}
+        audioContextRef.current = null;
+        analyserRef.current = null;
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
       setProcessingProgress(0);
+      setDebugText('Recording started...');
       
-      setQuestionStates(prev => ({
-        ...prev,
+        setQuestionStates(prev => ({
+            ...prev,
         [currentQuestionIndex]: {
           ...prev[currentQuestionIndex],
-          isRecording: true,
+                isRecording: true,
+            }
+        }));
+
+      // waveform setup
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
+          sampleRate: 44100
+        });
+        audioContextRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        
+        // Better analyser settings for music and speech
+        analyser.fftSize = 4096;
+        analyser.smoothingTimeConstant = 0.3;
+        analyser.minDecibels = -90;
+        analyser.maxDecibels = -10;
+        
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            const draw = () => {
+              analyser.getByteTimeDomainData(dataArray);
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = '#6ea8fe';
+              ctx.beginPath();
+              const sliceWidth = canvas.width / bufferLength;
+              let x = 0;
+              for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                x += sliceWidth;
+              }
+              ctx.lineTo(canvas.width, canvas.height / 2);
+              ctx.stroke();
+              animationFrameRef.current = requestAnimationFrame(draw);
+            };
+            draw();
+          }
         }
-      }));
+      } catch (e) {
+        console.error('Waveform setup failed:', e);
+      }
       
-      setDebugText('Recording started - speak now!');
-      
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error starting recording:', error);
-      setDebugText(`Recording failed: ${error.message}`);
-      toast({
+      setDebugText(`Recording error: ${error}`);
+        toast({
         variant: 'destructive',
         title: 'Recording Failed',
         description: 'Could not access microphone. Please check permissions.',
@@ -350,60 +414,86 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      console.log('Stopping recording, processing audio chunks:', audioChunksRef.current.length);
-      
       mediaRecorderRef.current.stop();
-      
-      // Validate audio data
-      if (audioChunksRef.current.length === 0) {
-        setDebugText('No audio data recorded - please try again');
-        setQuestionStates(prev => ({
-          ...prev,
-          [currentQuestionIndex]: {
-            ...prev[currentQuestionIndex],
-            isRecording: false,
-          }
-        }));
-        return;
-      }
-      
-      const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-      console.log('Audio blob created:', {
-        size: blob.size,
-        type: blob.type
+    }
+    mediaRecorderRef.current = null;
+  };
+
+  // Server-side transcription function (from demographics)
+  const transcribeWithServer = async (audioBlob: Blob) => {
+    try {
+      setProcessingProgress(10);
+      setDebugText('Sending audio to server for transcription...');
+      console.log('Audio blob details:', {
+        size: audioBlob.size,
+        type: audioBlob.type
       });
       
-      // Stop waveform drawing
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+      
+      setProcessingProgress(30);
+      setDebugText('Processing audio with Whisper...');
+      
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      console.log('Transcription response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`Server transcription failed: ${response.status}`);
       }
       
-      // Clear canvas
-      if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#1a1a1a';
-          ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        }
-      }
+      setProcessingProgress(70);
+      setDebugText('Processing transcription results...');
       
+      const result = await response.json();
+      console.log('Transcription result:', result);
+      
+      const transcriptionText = result.transcription || '';
+      
+      setProcessingProgress(90);
+      setDebugText('Finalizing transcription...');
+      
+      if (transcriptionText.trim()) {
+        setDebugText(`Server transcription: "${transcriptionText}"`);
+        
+        // Update question state with transcription
       setQuestionStates(prev => ({
         ...prev,
-        [currentQuestionIndex]: {
-          ...prev[currentQuestionIndex],
-          isRecording: false,
-          audioChunks: [...audioChunksRef.current],
-        }
-      }));
+          [currentQuestionIndex]: {
+            ...prev[currentQuestionIndex],
+            transcription: transcriptionText,
+            isTranscribing: false,
+          }
+        }));
+        
+        toast({
+          title: 'Transcription Complete!',
+          description: `Transcription: "${transcriptionText}"`,
+        });
+      } else {
+        setDebugText('Server transcription returned empty result');
+      }
       
-      setProcessingProgress(5);
-      setDebugText('Recording stopped - processing audio...');
+      setProcessingProgress(100);
       
-      // Automatically start transcription after recording stops
+      // Reset progress after a delay
       setTimeout(() => {
-        handleSubmit();
-      }, 500); // Small delay to ensure state is updated
+        setProcessingProgress(0);
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Server transcription error:', error);
+      setDebugText(`Server transcription error: ${error}`);
+      setProcessingProgress(0);
+      toast({
+        variant: 'destructive',
+        title: 'Transcription Failed',
+        description: 'Could not transcribe your audio. Please try again.',
+      });
     }
   };
 
@@ -441,20 +531,20 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       setProcessingProgress(10);
       setDebugText('Saving audio to database...');
       
-      const { data: inserted, error: insertError } = await supabase
-        .from('submissions')
-        .insert({
-          form_id: formId,
+        const { data: inserted, error: insertError } = await supabase
+          .from('submissions')
+          .insert({
+            form_id: formId,
           question_id: questions[currentQuestionIndex].id,
           question_text: questions[currentQuestionIndex].text,
           audio_url: '',
-          transcription: 'processing…',
-          submitter_uid: user?.id ?? null,
-        })
-        .select('id')
-        .single();
+            transcription: 'processing…',
+            submitter_uid: user?.id ?? null,
+          })
+          .select('id')
+          .single();
 
-      if (insertError) throw insertError;
+        if (insertError) throw insertError;
 
       // Step 2: Send to transcription API (20-70%)
       setProcessingProgress(20);
@@ -498,10 +588,10 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       setProcessingProgress(80);
       setDebugText('Saving transcription to database...');
       
-      await supabase
-        .from('submissions')
+        await supabase
+          .from('submissions')
         .update({ transcription: transcriptionText })
-        .eq('id', inserted.id);
+          .eq('id', inserted.id);
 
       // Step 4: Send to Google Sheets (90%)
       setProcessingProgress(90);
@@ -535,34 +625,34 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       // Step 5: Complete (100%)
       setProcessingProgress(100);
-      
-      toast({
-        title: 'Feedback Submitted!',
+
+        toast({
+          title: 'Feedback Submitted!',
         description: `Transcription: "${transcriptionText}"`,
-      });
+        });
       
-      setQuestionStates(prev => ({
-        ...prev,
+        setQuestionStates(prev => ({
+          ...prev,
         [currentQuestionIndex]: {
           ...prev[currentQuestionIndex],
-          isSubmitted: true,
+            isSubmitted: true,
           transcription: transcriptionText,
-          isTranscribing: false,
-        }
-      }));
+            isTranscribing: false,
+          }
+        }));
       
       // Reset progress after a delay
       setTimeout(() => {
         setProcessingProgress(0);
       }, 2000);
       
-    } catch (error) {
-      console.error('Error transcribing audio:', error);
+      } catch (error) {
+        console.error('Error transcribing audio:', error);
       setDebugText(`Transcription failed: ${error}`);
       setProcessingProgress(0);
-      toast({
-        variant: 'destructive',
-        title: 'Submission Failed',
+        toast({
+          variant: 'destructive',
+          title: 'Submission Failed',
         description: 'Could not transcribe your audio. Please try again.',
       });
       setQuestionStates(prev => ({ 
@@ -658,40 +748,31 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         <p className="text-2xl font-semibold text-center">{currentQuestionText}</p>
                     </div>
 
-                    <div className="flex flex-col items-center gap-4">
-                        <div className="flex items-center gap-4">
-                            <button
-                                onClick={isRecording ? stopRecording : startRecording}
-                                disabled={currentQuestionState.isSubmitted || currentQuestionState.isTranscribing}
-                                className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
-                                }`}
-                            >
-                                {isRecording ? <MicOff className="w-8 h-8 text-white" /> : 
-                                 currentQuestionState.isTranscribing ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : 
-                                 <Mic className="w-8 h-8 text-white" />}
-                            </button>
-                            <div className="flex flex-col items-center">
-                                <canvas 
-                                    ref={canvasRef}
-                                    width="300"
-                                    height="100"
-                                    className="rounded-md bg-gray-900 border border-gray-700"
-                                ></canvas>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {isRecording ? '🔴 Recording...' : 'Ready to record'}
-                                </p>
-                            </div>
+                    <div className="space-y-4">
+                        {/* Demographics-style recording interface */}
+                        <div className="flex justify-center gap-2">
+                            {isRecording ? (
+                                <Button onClick={stopRecording} variant="destructive">
+                                    Stop Recording
+                                </Button>
+                            ) : (
+                                <Button onClick={startRecording} disabled={currentQuestionState.isTranscribing}>
+                                    {currentQuestionState.isTranscribing ? 'Processing...' : 'Start Recording'}
+                                </Button>
+                            )}
                         </div>
                         
-                        <p className="text-sm text-muted-foreground h-5">
-                            {isRecording ? `Recording... (Level: ${Math.round(audioLevel)}%)` : 
-                             currentQuestionState.isTranscribing ? 'Processing audio...' :
-                             (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
-                        </p>
+                        {/* Waveform Canvas */}
+                            <canvas 
+                            ref={canvasRef}
+                            width="320" 
+                            height="60" 
+                            className="w-full rounded bg-muted border"
+                        />
                         
+                        {/* Debug Text */}
                         {debugText && (
-                            <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded mt-2">
+                            <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded">
                                 <strong>Debug:</strong> {debugText}
                             </div>
                         )}
@@ -714,9 +795,10 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                                         ✅ Processing complete!
                                     </div>
                                 )}
-                            </div>
+                        </div>
                         )}
                     
+                        {/* Submit Button */}
                         {currentQuestionState.isSubmitted ? (
                             <div className="flex items-center gap-2 text-green-600">
                                 <CheckCircle className="h-4 w-4" />
@@ -724,21 +806,12 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                             </div>
                         ) : (
                             <Button 
-                            size="sm"
-                            onClick={handleSubmit} 
-                            disabled={currentQuestionState.isTranscribing || currentQuestionState.audioChunks.length === 0 || isRecording}
+                                onClick={handleSubmit}
+                                disabled={currentQuestionState.audioChunks.length === 0 || currentQuestionState.isTranscribing}
+                                className="flex items-center gap-2 w-full"
                             >
-                            {currentQuestionState.isTranscribing ? (
-                                <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Submitting...
-                                </>
-                            ) : (
-                                <>
-                                <Send className="mr-2 h-4 w-4" />
+                                <Send className="h-4 w-4" />
                                 Submit Answer
-                                </>
-                            )}
                             </Button>
                         )}
                     </div>
