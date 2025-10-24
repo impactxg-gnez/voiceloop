@@ -53,10 +53,12 @@ export async function POST(request: NextRequest) {
 
     // Get form details and check for user-specific Google Drive link
     const supabase = getSupabaseClient();
+    console.log('Supabase client initialized');
     
     // First check if user has a specific Google Drive folder linked
     let userDriveLink = null;
     if (userId) {
+      console.log('Checking for user drive link:', { userId, formId });
       const { data: driveLinkData } = await supabase
         .from('user_google_drive_links')
         .select('*')
@@ -64,6 +66,7 @@ export async function POST(request: NextRequest) {
         .eq('form_id', formId)
         .single();
       
+      console.log('User drive link query result:', driveLinkData);
       userDriveLink = driveLinkData;
     }
 
@@ -73,10 +76,48 @@ export async function POST(request: NextRequest) {
       .eq('id', formId)
       .single();
 
+    console.log('Form lookup result:', { form, formError, formId });
+
     if (formError || !form) {
       console.error('Error fetching form:', formError);
+      console.error('Form ID that failed:', formId);
+      
+      // If form not found but we have a user drive link, still proceed
+      if (userDriveLink) {
+        console.log('Form not found in database, but user has drive link. Proceeding with drive link only.');
+        const form = { id: formId, title: 'Unknown Form' };
+        
+        // Continue with the process using the drive link
+        const googleSheetsService = await getGoogleSheetsService();
+        const parsedData = googleSheetsService.parseTranscription(transcription);
+        
+        try {
+          await googleSheetsService.addResponseToUserFolder(
+            userDriveLink.folder_id,
+            transcription,
+            questionText || 'Voice Response',
+            userId || 'anonymous'
+          );
+          
+          return NextResponse.json({
+            success: true,
+            parsedData,
+            sheetUrl: userDriveLink.folder_url,
+            spreadsheetId: userDriveLink.folder_id,
+            userFolder: true,
+            warning: 'Form not found in database, but response saved to Google Drive'
+          });
+        } catch (error) {
+          console.error('Error saving to user folder:', error);
+          return NextResponse.json(
+            { error: 'Failed to save response to Google Drive', details: (error as any)?.message },
+            { status: 500 }
+          );
+        }
+      }
+      
       return NextResponse.json(
-        { error: 'Form not found' },
+        { error: 'Form not found', formId, formError: formError?.message },
         { status: 404 }
       );
     }
