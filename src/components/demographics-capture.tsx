@@ -40,6 +40,7 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [debugText, setDebugText] = useState('');
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
 
   // Debug logging
   console.log('DemographicsCapture - formId:', formId);
@@ -69,6 +70,7 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   // Server-side transcription fallback
   const transcribeWithServer = async (audioBlob: Blob) => {
     try {
+      setProcessingProgress(10);
       setDebugText('Sending audio to server for transcription...');
       console.log('Audio blob details:', {
         size: audioBlob.size,
@@ -77,6 +79,9 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
       
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
+      
+      setProcessingProgress(30);
+      setDebugText('Processing audio with Whisper...');
       
       const response = await fetch('/api/transcribe', {
         method: 'POST',
@@ -89,10 +94,16 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
         throw new Error(`Server transcription failed: ${response.status}`);
       }
       
+      setProcessingProgress(70);
+      setDebugText('Processing transcription results...');
+      
       const result = await response.json();
       console.log('Transcription result:', result);
       
       const transcribedText = result.transcription || '';
+      
+      setProcessingProgress(90);
+      setDebugText('Finalizing transcription...');
       
       if (transcribedText.trim()) {
         setText(transcribedText);
@@ -100,9 +111,18 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
       } else {
         setDebugText('Server transcription returned empty result');
       }
+      
+      setProcessingProgress(100);
+      
+      // Reset progress after a delay
+      setTimeout(() => {
+        setProcessingProgress(0);
+      }, 2000);
+      
     } catch (error) {
       console.error('Server transcription error:', error);
       setDebugText(`Server transcription error: ${error}`);
+      setProcessingProgress(0);
     } finally {
       setIsProcessingVoice(false);
     }
@@ -185,6 +205,7 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
         recordStartRef.current = null;
         setRecordMs(0);
         setIsProcessingVoice(true);
+        setProcessingProgress(5);
         setDebugText('Processing voice input...');
         
         // Use server-side transcription directly for reliability
@@ -198,6 +219,8 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
       recorder.start();
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
+      setProcessingProgress(0);
+      setDebugText('Recording started...');
       recordStartRef.current = performance.now();
       const tick = () => {
         if (recordStartRef.current != null) {
@@ -350,6 +373,27 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
               {debugText && (
                 <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded">
                   <strong>Debug:</strong> {debugText}
+                </div>
+              )}
+
+              {/* Processing Progress Bar */}
+              {(processingProgress > 0 || debugText.includes('processing')) && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                    <span>{processingProgress < 10 ? 'Preparing audio...' : 'Processing audio...'}</span>
+                    <span>{processingProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${processingProgress}%` }}
+                    />
+                  </div>
+                  {processingProgress === 100 && (
+                    <div className="text-sm text-green-600 dark:text-green-400 font-medium text-center">
+                      ✅ Processing complete!
+                    </div>
+                  )}
                 </div>
               )}
             </div>
