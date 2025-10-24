@@ -18,6 +18,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           question_count: number;
+          is_published: boolean;
         };
         Insert: {
           id?: string;
@@ -26,6 +27,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           question_count: number;
+          is_published?: boolean;
         };
         Update: {
           id?: string;
@@ -34,6 +36,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           question_count?: number;
+          is_published?: boolean;
         };
       };
       form_pages: {

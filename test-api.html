@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API Test Page</h1>
+    <button onclick="testGoogleSheets()">Test Google Sheets API</button>
+    <button onclick="testDebugForms()">Test Debug Forms API</button>
+    <button onclick="testSimpleGoogleSheets()">Test Simple Google Sheets API</button>
+    <div id="results"></div>
+
+    <script>
+        async function testGoogleSheets() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Testing Google Sheets API...</p>';
+            
+            try {
+                const response = await fetch('/api/google-sheets', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        formId: 'test-form-id',
+                        transcription: 'Test transcription',
+                        questionText: 'Test question',
+                        userId: 'test-user-id'
+                    })
+                });
+                
+                const data = await response.json();
+                results.innerHTML = `<p>Google Sheets API Response (${response.status}):</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                results.innerHTML = `<p>Google Sheets API Error:</p><pre>${error.message}</pre>`;
+            }
+        }
+
+        async function testDebugForms() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Testing Debug Forms API...</p>';
+            
+            try {
+                const response = await fetch('/api/debug-forms');
+                const data = await response.json();
+                results.innerHTML = `<p>Debug Forms API Response (${response.status}):</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                results.innerHTML = `<p>Debug Forms API Error:</p><pre>${error.message}</pre>`;
+            }
+        }
+
+        async function testSimpleGoogleSheets() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Testing Simple Google Sheets API...</p>';
+            
+            try {
+                const response = await fetch('/api/test-google-sheets-simple', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        formId: 'test-form-id',
+                        transcription: 'Test transcription'
+                    })
+                });
+                
+                const data = await response.json();
+                results.innerHTML = `<p>Simple Google Sheets API Response (${response.status}):</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                results.innerHTML = `<p>Simple Google Sheets API Error:</p><pre>${error.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>
