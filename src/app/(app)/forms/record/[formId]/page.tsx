@@ -55,6 +55,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const [questionStates, setQuestionStates] = useState<Record<number, QuestionState>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [debugText, setDebugText] = useState('');
+  const [processingProgress, setProcessingProgress] = useState(0);
 
   // Audio recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -344,12 +345,16 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         isTranscribing: true 
       } 
     }));
-    setDebugText('Transcribing audio...');
+    setProcessingProgress(0);
+    setDebugText('Preparing audio for transcription...');
     
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     
     try {
-      // Insert placeholder row
+      // Step 1: Insert placeholder row (10%)
+      setProcessingProgress(10);
+      setDebugText('Saving audio to database...');
+      
       const { data: inserted, error: insertError } = await supabase
         .from('submissions')
         .insert({
@@ -365,29 +370,53 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       if (insertError) throw insertError;
 
-      // Transcribe using API endpoint
+      // Step 2: Send to transcription API (20-70%)
+      setProcessingProgress(20);
+      setDebugText('Sending audio to transcription service...');
+      
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
+      
+      // Simulate progress during transcription
+      const progressInterval = setInterval(() => {
+        setProcessingProgress(prev => {
+          if (prev < 60) {
+            return prev + 5;
+          }
+          return prev;
+        });
+      }, 500);
       
       const transcriptionResponse = await fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
       });
       
+      clearInterval(progressInterval);
+      
       if (!transcriptionResponse.ok) {
         throw new Error(`Transcription failed: ${transcriptionResponse.status}`);
       }
       
+      setProcessingProgress(70);
+      setDebugText('Processing transcription results...');
+      
       const transcriptionResult = await transcriptionResponse.json();
       const transcriptionText = transcriptionResult.transcription || 'transcription unavailable';
       
-      // Update with transcription
+      // Step 3: Update database with transcription (80%)
+      setProcessingProgress(80);
+      setDebugText('Saving transcription to database...');
+      
       await supabase
         .from('submissions')
         .update({ transcription: transcriptionText })
         .eq('id', inserted.id);
 
-      // Send to Google Sheets
+      // Step 4: Send to Google Sheets (90%)
+      setProcessingProgress(90);
+      setDebugText('Sending data to Google Sheets...');
+      
       try {
         const sheetsResponse = await fetch('/api/google-sheets', {
           method: 'POST',
@@ -414,6 +443,9 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         setDebugText(`Transcription complete: "${transcriptionText}" | Google Sheets error`);
       }
 
+      // Step 5: Complete (100%)
+      setProcessingProgress(100);
+      
       toast({
         title: 'Feedback Submitted!',
         description: `Transcription: "${transcriptionText}"`,
@@ -429,9 +461,15 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         }
       }));
       
+      // Reset progress after a delay
+      setTimeout(() => {
+        setProcessingProgress(0);
+      }, 2000);
+      
     } catch (error) {
       console.error('Error transcribing audio:', error);
       setDebugText(`Transcription failed: ${error}`);
+      setProcessingProgress(0);
       toast({
         variant: 'destructive',
         title: 'Submission Failed',
@@ -561,6 +599,27 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         {debugText && (
                             <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded mt-2">
                                 <strong>Debug:</strong> {debugText}
+                            </div>
+                        )}
+
+                        {/* Processing Progress Bar */}
+                        {processingProgress > 0 && (
+                            <div className="mt-4 space-y-2">
+                                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                                    <span>Processing audio...</span>
+                                    <span>{processingProgress}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div 
+                                        className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                                        style={{ width: `${processingProgress}%` }}
+                                    />
+                                </div>
+                                {processingProgress === 100 && (
+                                    <div className="text-sm text-green-600 dark:text-green-400 font-medium text-center">
+                                        ✅ Processing complete!
+                                    </div>
+                                )}
                             </div>
                         )}
                     
