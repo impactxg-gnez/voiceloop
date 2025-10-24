@@ -44,3 +44,4 @@ CREATE POLICY "Users can update their own sheet mappings" ON form_sheet_mappings
       AND forms.user_id = auth.uid()
     )
   );
+
