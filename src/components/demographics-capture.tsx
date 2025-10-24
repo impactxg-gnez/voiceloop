@@ -70,6 +70,11 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const transcribeWithServer = async (audioBlob: Blob) => {
     try {
       setDebugText('Sending audio to server for transcription...');
+      console.log('Audio blob details:', {
+        size: audioBlob.size,
+        type: audioBlob.type
+      });
+      
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       
@@ -78,11 +83,15 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
         body: formData,
       });
       
+      console.log('Transcription response status:', response.status);
+      
       if (!response.ok) {
         throw new Error(`Server transcription failed: ${response.status}`);
       }
       
       const result = await response.json();
+      console.log('Transcription result:', result);
+      
       const transcribedText = result.transcription || '';
       
       if (transcribedText.trim()) {
@@ -92,6 +101,7 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
         setDebugText('Server transcription returned empty result');
       }
     } catch (error) {
+      console.error('Server transcription error:', error);
       setDebugText(`Server transcription error: ${error}`);
     } finally {
       setIsProcessingVoice(false);
@@ -148,11 +158,28 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
       const recorder = new MediaRecorder(stream);
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) setHasVoiceInput(true);
-        audioChunksRef.current.push(e.data);
+        if (e.data && e.data.size > 0) {
+          setHasVoiceInput(true);
+          audioChunksRef.current.push(e.data);
+          console.log('Audio chunk received:', e.data.size, 'bytes');
+          setDebugText(`Recording... (${audioChunksRef.current.length} chunks, ${e.data.size} bytes)`);
+        }
       };
       recorder.onstop = async () => {
+        console.log('Recording stopped, processing audio chunks:', audioChunksRef.current.length);
+        
+        if (audioChunksRef.current.length === 0) {
+          setDebugText('No audio data recorded - please try again');
+          setIsProcessingVoice(false);
+          return;
+        }
+        
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log('Audio blob created:', {
+          size: blob.size,
+          type: blob.type
+        });
+        
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
         recordStartRef.current = null;
@@ -160,56 +187,9 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
         setIsProcessingVoice(true);
         setDebugText('Processing voice input...');
         
-        // Try client-side speech-to-text first, then fallback to server-side
-        try {
-          const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-          if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.interimResults = true;
-            recognition.continuous = false;
-            let finalText = '';
-            let hasResult = false;
-            
-            recognition.onresult = (event: any) => {
-              hasResult = true;
-              let combined = '';
-              for (let i = event.resultIndex; i < event.results.length; i++) {
-                combined += event.results[i][0].transcript + ' ';
-                if (event.results[i].isFinal) finalText = combined;
-              }
-              const transcribedText = (finalText || combined).trim();
-              setText(transcribedText);
-              setDebugText(`Voice transcribed: "${transcribedText}"`);
-            };
-            
-            recognition.onend = () => {
-              if (!hasResult || !finalText) {
-                setDebugText('Client-side recognition failed, trying server-side...');
-                // Fallback to server-side transcription
-                transcribeWithServer(blob);
-              } else {
-                setIsProcessingVoice(false);
-              }
-            };
-            
-            recognition.onerror = (event: any) => {
-              setDebugText(`Client-side error: ${event.error}. Trying server-side...`);
-              // Fallback to server-side transcription
-              transcribeWithServer(blob);
-            };
-            
-            recognition.start();
-          } else {
-            setDebugText('Client-side recognition not supported, using server-side...');
-            // Fallback to server-side transcription
-            transcribeWithServer(blob);
-          }
-        } catch (error) {
-          setDebugText(`Client-side error: ${error}. Trying server-side...`);
-          // Fallback to server-side transcription
-          transcribeWithServer(blob);
-        }
+        // Use server-side transcription directly for reliability
+        setDebugText('Using server-side transcription...');
+        await transcribeWithServer(blob);
         if (frameRef.current) cancelAnimationFrame(frameRef.current);
         try { audioCtxRef.current?.close(); } catch {}
         audioCtxRef.current = null;
