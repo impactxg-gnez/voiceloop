@@ -20,11 +20,9 @@ type QuestionState = {
   isSubmitted: boolean;
   audioChunks: Blob[];
   transcription?: string;
-  analyser?: AnalyserNode;
   audioUrl?: string;
   isGeneratingAudio: boolean;
   isPlayingAudio: boolean;
-  stopDrawing?: () => void;
 };
 
 type FormDoc = { title: string };
@@ -36,8 +34,6 @@ type FormPageDoc = {
   page_order: number; 
   is_intro_page: boolean; 
 };
-
-const animationFrameIds: Record<number, number> = {};
 
 export default function RecordFormPage({ params }: { params: { formId: string } }) {
   const { formId } = params;
@@ -53,19 +49,21 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
   const { data: questions, isLoading: isLoadingQuestions } = useCollection<QuestionDoc>('questions', '*', { form_id: formId });
   const { data: formPages, isLoading: isLoadingPages } = useCollection<FormPageDoc>('form_pages', '*', { form_id: formId });
   
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [showPages, setShowPages] = useState(true);
   const [demographicsDone, setDemographicsDone] = useState(false);
   const [questionStates, setQuestionStates] = useState<Record<number, QuestionState>>({});
-  const [activeRecordingIndex, setActiveRecordingIndex] = useState<number | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [debugText, setDebugText] = useState('');
-  const [microphoneReady, setMicrophoneReady] = useState(false);
 
+  // Audio recording refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -82,128 +80,47 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       };
     });
     setQuestionStates(initialStates);
-
-    if (typeof window !== 'undefined' && !audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
   }, [questions]);
 
-  const setupMediaRecorder = async () => {
-    console.log('Setting up MediaRecorder...');
-    setDebugText('Setting up microphone...');
+  useEffect(() => {
+    audioRef.current = new Audio();
     
-    if (typeof window !== 'undefined' && 'MediaRecorder' in window) {
-      try {
-        console.log('Requesting microphone access...');
-        setDebugText('Requesting microphone access...');
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log('Microphone access granted, stream:', stream);
-        setDebugText('Microphone access granted');
-        
-        const recorder = new MediaRecorder(stream);
-        console.log('MediaRecorder created:', recorder);
-        
-        recorder.ondataavailable = (event) => {
-            console.log('Audio data available:', event.data.size, 'bytes');
-            if (event.data && event.data.size > 0) {
-              setQuestionStates(prev => {
-                // Find the currently recording question
-                const recordingQuestion = Object.keys(prev).find(key => 
-                  prev[parseInt(key)].isRecording
-                );
-                if (recordingQuestion) {
-                  const questionIndex = parseInt(recordingQuestion);
-                  const currentQuestionState = prev[questionIndex];
-                  return {
-                    ...prev,
-                    [questionIndex]: {
-                      ...currentQuestionState,
-                      audioChunks: [...currentQuestionState.audioChunks, event.data],
-                    },
-                  };
-                }
-                return prev;
-              });
-            }
-        };
-        
-        recorder.onstart = () => {
-          console.log('MediaRecorder started');
-        };
-        
-        recorder.onstop = () => {
-          console.log('MediaRecorder stopped');
-        };
-        
-        recorder.onerror = (event) => {
-          console.error('MediaRecorder error:', event);
-          setDebugText(`MediaRecorder error: ${event}`);
-        };
-        
-        setMediaRecorder(recorder);
-        setMicrophoneReady(true);
-        console.log('MediaRecorder set in state:', !!recorder);
-        setDebugText('Microphone ready!');
-
-        // Setup audio context for waveform visualization
-        if (!audioContextRef.current) {
-          console.log('Creating audio context...');
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const currentAudioRef = audioRef.current;
+    const onEnded = () => {
+      setQuestionStates(prevStates => {
+        const newStates = {...prevStates};
+        for (const index in newStates) {
+          if (newStates[index].isPlayingAudio) {
+            newStates[index] = { ...newStates[index], isPlayingAudio: false };
+          }
         }
-        
-        if (audioContextRef.current && stream.getAudioTracks().length > 0) {
-            console.log('Creating audio stream source...');
-            console.log('Audio context state before resume:', audioContextRef.current.state);
-            
-            // Ensure audio context is running
-            if (audioContextRef.current.state === 'suspended') {
-                console.log('Resuming audio context...');
-                await audioContextRef.current.resume();
-                console.log('Audio context state after resume:', audioContextRef.current.state);
-            }
-            
-            if (audioStreamSourceRef.current) {
-                audioStreamSourceRef.current.disconnect();
-            }
-            try {
-                audioStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-                console.log('Audio context source created successfully:', audioStreamSourceRef.current);
-                setDebugText('Audio context and stream source ready');
-            } catch (error) {
-                console.error('Error creating audio stream source:', error);
-                setDebugText(`Audio stream source error: ${error}`);
-            }
-        } else {
-            console.log('Cannot create audio stream source:', {
-                hasAudioContext: !!audioContextRef.current,
-                audioTracks: stream.getAudioTracks().length,
-                audioContextState: audioContextRef.current?.state
-            });
-            setDebugText('Audio context setup failed');
-        }
-        
-        // Return the recorder for immediate use
-        return recorder;
-
-      } catch (err: any) {
-        console.error('Error accessing microphone:', err);
-        setDebugText(`Microphone error: ${err.message}`);
-        toast({
-          variant: 'destructive',
-          title: 'Microphone Access Denied',
-          description: `Please allow microphone access in your browser settings to record audio. Error: ${err.message}`,
-        });
-      }
-    } else {
-      console.error('MediaRecorder not supported in this browser');
-      setDebugText('MediaRecorder not supported in this browser');
-      toast({
-        variant: 'destructive',
-        title: 'Recording Not Supported',
-        description: 'Your browser does not support audio recording. Please use a modern browser.',
+        return newStates;
       });
     }
-  };
+    
+    currentAudioRef.addEventListener('ended', onEnded);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
+      if (currentAudioRef) {
+        currentAudioRef.removeEventListener('ended', onEnded);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(questionStates).length > 0) {
+      handlePlayQuestion(currentQuestionIndex);
+    }
+  }, [currentQuestionIndex]);
 
   const handlePlayQuestion = useCallback(async (questionIndex: number) => {
     const state = questionStates[questionIndex];
@@ -229,7 +146,6 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       });
       setQuestionStates(newStates);
     }
-
 
     if (state.audioUrl && audioRef.current) {
         audioRef.current.src = state.audioUrl;
@@ -266,422 +182,151 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     }
   }, [questions, questionStates, toast]);
 
-  useEffect(() => {
-    // Initialize audio ref
-    audioRef.current = new Audio();
-    
-    const currentAudioRef = audioRef.current;
-    const onEnded = () => {
-      setQuestionStates(prevStates => {
-        const newStates = {...prevStates};
-        for (const index in newStates) {
-          if (newStates[index].isPlayingAudio) {
-            newStates[index] = { ...newStates[index], isPlayingAudio: false };
-          }
-        }
-        return newStates;
-      });
-    }
-    
-    currentAudioRef.addEventListener('ended', onEnded);
+  const drawWaveform = () => {
+    if (!analyserRef.current || !canvasRef.current) return;
 
-    return () => {
-      Object.values(animationFrameIds).forEach(cancelAnimationFrame);
-      if (audioStreamSourceRef.current) {
-        audioStreamSourceRef.current.disconnect();
-        audioStreamSourceRef.current = null;
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
-      if (currentAudioRef) {
-        currentAudioRef.removeEventListener('ended', onEnded);
-      }
-    };
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-  useEffect(() => {
-    if (Object.keys(questionStates).length > 0) {
-      handlePlayQuestion(currentQuestionIndex);
-    }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentQuestionIndex]);
+    const analyser = analyserRef.current;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
 
-  const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number, isRecording: boolean = false) => {
-    console.log('=== WAVEFORM DEBUG START ===');
-    console.log('Canvas element:', canvas);
-    console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
-    console.log('Analyser node:', analyser);
-    console.log('Analyser fftSize:', analyser.fftSize);
-    console.log('Analyser frequencyBinCount:', analyser.frequencyBinCount);
-    
-    const canvasCtx = canvas.getContext('2d');
-    if (!canvasCtx) {
-      console.error('❌ Could not get canvas context');
-      return;
-    }
-    console.log('✅ Canvas context obtained');
-
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    console.log('Data array size:', dataArray.length);
-    console.log('Starting waveform drawing for question:', questionIndex);
-    
-    let frameCount = 0;
-    let isDrawing = isRecording; // Use the passed parameter
-    
-    console.log('Drawing started with isRecording:', isRecording);
-    
-    const drawFrame = () => {
-      frameCount++;
-      
-      // Check if we should continue drawing
-      if (!isDrawing) {
-        console.log('Drawing stopped by local flag');
-        return;
-      }
-      
-      // Check if we should stop based on current state
-      const currentActiveIndex = activeRecordingIndex;
-      const currentQuestionState = questionStates[questionIndex];
-      
-      if (currentActiveIndex !== questionIndex || !currentQuestionState?.isRecording) {
-        console.log('Stopping waveform drawing - state check failed');
-        console.log('Current active index:', currentActiveIndex);
-        console.log('Target question index:', questionIndex);
-        console.log('Question state isRecording:', currentQuestionState?.isRecording);
-        isDrawing = false;
-        return;
-      }
-      
-      animationFrameIds[questionIndex] = requestAnimationFrame(drawFrame);
+    const draw = () => {
       analyser.getByteTimeDomainData(dataArray);
 
-      // Log data every 60 frames (about once per second)
-      if (frameCount % 60 === 0) {
-        console.log(`Frame ${frameCount} - Data array sample:`, dataArray.slice(0, 10));
-        console.log('Data range:', Math.min(...dataArray), 'to', Math.max(...dataArray));
-      }
+      // Clear canvas
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Clear canvas with dark background
-      canvasCtx.fillStyle = '#1a1a1a';
-      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-      
       // Draw center line
-      canvasCtx.strokeStyle = '#333';
-      canvasCtx.lineWidth = 1;
-      canvasCtx.beginPath();
-      canvasCtx.moveTo(0, canvas.height / 2);
-      canvasCtx.lineTo(canvas.width, canvas.height / 2);
-      canvasCtx.stroke();
-      
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+
       // Draw waveform
-      canvasCtx.lineWidth = 2;
-      canvasCtx.strokeStyle = '#3b82f6';
-      canvasCtx.beginPath();
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
 
-      const sliceWidth = canvas.width / analyser.frequencyBinCount;
+      const sliceWidth = canvas.width / bufferLength;
       let x = 0;
-      let hasData = false;
-      let maxAmplitude = 0;
 
-      for (let i = 0; i < analyser.frequencyBinCount; i++) {
-          const v = dataArray[i] / 128.0;
-          const y = (v * canvas.height / 2) + (canvas.height / 2);
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * canvas.height / 2) + (canvas.height / 2);
 
-          if (i === 0) {
-              canvasCtx.moveTo(x, y);
-          } else {
-              canvasCtx.lineTo(x, y);
-          }
-          x += sliceWidth;
-          
-          // Check if we have any significant audio data
-          const amplitude = Math.abs(v);
-          if (amplitude > 0.1) {
-            hasData = true;
-          }
-          maxAmplitude = Math.max(maxAmplitude, amplitude);
-      }
-
-      canvasCtx.stroke();
-      
-      // Log waveform activity every 60 frames
-      if (frameCount % 60 === 0) {
-        console.log(`Waveform frame ${frameCount}: hasData=${hasData}, maxAmplitude=${maxAmplitude.toFixed(3)}`);
-        if (hasData) {
-          console.log('🎵 Audio data detected in waveform!');
+        if (i === 0) {
+          ctx.moveTo(x, y);
         } else {
-          console.log('🔇 No significant audio data');
+          ctx.lineTo(x, y);
         }
+        x += sliceWidth;
       }
+
+      ctx.stroke();
+
+      animationFrameRef.current = requestAnimationFrame(draw);
     };
-    
-    console.log('=== WAVEFORM DEBUG END - Starting draw loop ===');
-    drawFrame();
-    
-    // Return a function to stop drawing
-    return () => {
-      isDrawing = false;
-      console.log('Drawing stopped externally');
-    };
+
+    draw();
   };
 
-
-  const handleMicrophoneAction = async (questionIndex: number) => {
-    console.log('handleMicrophoneAction called for question:', questionIndex);
-    console.log('Current state:', {
-      mediaRecorder: !!mediaRecorder,
-      activeRecordingIndex,
-      audioContext: !!audioContextRef.current,
-      audioStreamSource: !!audioStreamSourceRef.current,
-      microphoneReady,
-      isRecording: questionStates[questionIndex]?.isRecording
-    });
-    
-    // If already recording, stop it
-    if (activeRecordingIndex === questionIndex && questionStates[questionIndex]?.isRecording) {
-      stopRecording(questionIndex);
-      return;
-    }
-    
-    // If recording another question, show error
-    if (activeRecordingIndex !== null && activeRecordingIndex !== questionIndex) {
-      console.log('Recording already in progress for another question');
-      toast({
-        variant: "destructive",
-        title: "Recording in Progress",
-        description: "Please stop the current recording before starting a new one.",
-      });
-      return;
-    }
-    
-    // Always ensure microphone is set up before recording
-    if (!mediaRecorder || !microphoneReady || !audioContextRef.current || !audioStreamSourceRef.current) {
-      console.log('Setting up microphone and audio components...');
-      setDebugText('Setting up microphone and audio components...');
-      try {
-        const recorder = await setupMediaRecorder();
-        console.log('Setup complete, MediaRecorder returned:', !!recorder);
-        console.log('Current mediaRecorder state:', !!mediaRecorder);
-        console.log('Recorder object:', recorder);
-        
-        if (!recorder) {
-          console.error('MediaRecorder not returned from setup');
-          setDebugText('MediaRecorder setup failed - please try again');
-          toast({
-            variant: "destructive",
-            title: "Microphone Setup Failed",
-            description: "Could not initialize microphone. Please try again.",
-          });
-          return;
-        }
-        
-        console.log('MediaRecorder is ready, starting recording...');
-        // Start recording after successful setup
-        await startRecording(questionIndex, recorder);
-      } catch (error: any) {
-        console.error('Microphone setup failed:', error);
-        setDebugText(`Setup failed: ${error.message}`);
-        toast({
-          variant: "destructive",
-          title: "Microphone Setup Failed",
-          description: "Could not access microphone. Please check permissions.",
-        });
-      }
-      return;
-    }
-    
-    // Start recording
-    await startRecording(questionIndex);
-  };
-
-  const startRecording = async (questionIndex: number, recorder?: MediaRecorder) => {
+  const startRecording = async () => {
     try {
-      console.log('Starting recording for question:', questionIndex);
+      setDebugText('Setting up microphone...');
       
-      // Use the passed recorder or fall back to state
-      const currentRecorder = recorder || mediaRecorder;
+      // Get microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
       
-      // Double-check that MediaRecorder is available
-      if (!currentRecorder) {
-        console.error('MediaRecorder is null, cannot start recording');
-        setDebugText('MediaRecorder not available - setup failed');
-        throw new Error('MediaRecorder not available');
-      }
+      // Create MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
       
-      if (!audioContextRef.current || !audioStreamSourceRef.current) {
-        console.error('Audio components not ready');
-        setDebugText('Audio components not ready');
-        throw new Error('Audio components not ready');
-      }
-      
-      if (audioContextRef.current.state === 'suspended') {
-        console.log('Resuming audio context...');
-        await audioContextRef.current.resume();
-      }
+      // Handle data
+      audioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
 
-      const analyser = audioContextRef.current.createAnalyser();
+      // Setup audio context for waveform
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = audioContext;
+      
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
       analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
-      
-      console.log('=== AUDIO CONNECTION DEBUG ===');
-      console.log('Audio context state:', audioContextRef.current.state);
-      console.log('Audio stream source:', audioStreamSourceRef.current);
-      console.log('Analyser created:', analyser);
-      console.log('Analyser fftSize:', analyser.fftSize);
-      console.log('Analyser frequencyBinCount:', analyser.frequencyBinCount);
-      
-      // Connect the audio stream to the analyser
-      try {
-        audioStreamSourceRef.current.connect(analyser);
-        console.log('✅ Analyser connected to audio stream source');
-        
-        // Test the connection
-        const testArray = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteTimeDomainData(testArray);
-        console.log('✅ Analyser data retrieval test successful');
-        console.log('Test data sample:', testArray.slice(0, 5));
-      } catch (error) {
-        console.error('❌ Failed to connect analyser:', error);
-      }
+      source.connect(analyser);
+      analyserRef.current = analyser;
 
-      const canvas = canvasRefs.current[questionIndex];
+      // Start waveform drawing
+      drawWaveform();
 
-      // Set state FIRST before starting drawing
-      setActiveRecordingIndex(questionIndex);
-      setDebugText(`Started recording for question ${questionIndex + 1}`);
+      // Start recording
+      mediaRecorder.start();
+      
       setQuestionStates(prev => ({
         ...prev,
-        [questionIndex]: {
-          ...prev[questionIndex],
+        [currentQuestionIndex]: {
+          ...prev[currentQuestionIndex],
           isRecording: true,
-          audioChunks: [],
-          analyser,
         }
       }));
-
-      if (canvas) {
-        console.log('Starting waveform visualization on canvas:', canvas);
-        console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
-        
-        // Clear canvas first and draw a test pattern
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#1a1a1a';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          // Draw a test pattern to verify canvas is working
-          ctx.strokeStyle = '#00ff00';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(10, 10);
-          ctx.lineTo(canvas.width - 10, canvas.height - 10);
-          ctx.moveTo(canvas.width - 10, 10);
-          ctx.lineTo(10, canvas.height - 10);
-          ctx.stroke();
-          console.log('✅ Canvas test pattern drawn');
-        }
-        
-        // Pass recording state directly to avoid React state timing issues
-        const stopDrawing = draw(analyser, canvas, questionIndex, true);
-        
-        // Store the stop function for later use
-        setQuestionStates(prev => ({
-          ...prev,
-          [questionIndex]: {
-            ...prev[questionIndex],
-            stopDrawing,
-          }
-        }));
-      } else {
-        console.warn('❌ Canvas not found for waveform visualization');
-      }
-
-      console.log('Starting MediaRecorder...');
-      currentRecorder.start();
-      console.log('MediaRecorder.start() called successfully');
+      
+      setDebugText('Recording started - speak now!');
       
     } catch (error: any) {
       console.error('Error starting recording:', error);
-      setDebugText(`Recording start error: ${error.message}`);
+      setDebugText(`Recording failed: ${error.message}`);
       toast({
-        variant: "destructive",
-        title: "Recording Failed",
-        description: "Could not start recording. Please try again.",
+        variant: 'destructive',
+        title: 'Recording Failed',
+        description: 'Could not access microphone. Please check permissions.',
       });
-      
-      // Reset state on error
-      setActiveRecordingIndex(null);
-      setQuestionStates(prev => ({
-        ...prev,
-        [questionIndex]: { ...prev[questionIndex], isRecording: false }
-      }));
     }
   };
 
-  const stopRecording = (questionIndex: number) => {
-    if (mediaRecorder && activeRecordingIndex === questionIndex) {
-      console.log('Stopping MediaRecorder...');
-      mediaRecorder.stop();
-      setDebugText(`Stopped recording for question ${questionIndex + 1}. Processing audio...`);
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
       
-      // Add timeout to prevent hanging
-      setTimeout(() => {
-        if (questionStates[questionIndex]?.isTranscribing) {
-          console.warn('Processing timeout - resetting state');
-          setDebugText('Processing timeout - please try again');
-          setQuestionStates(prev => ({
-            ...prev,
-            [questionIndex]: { ...prev[questionIndex], isTranscribing: false }
-          }));
-        }
-      }, 10000); // 10 second timeout
-
-      const state = questionStates[questionIndex];
-      
-      // Stop the waveform drawing
-      if (state.stopDrawing) {
-        state.stopDrawing();
+      // Stop waveform drawing
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
       
-      if (state.analyser && audioStreamSourceRef.current) {
-        audioStreamSourceRef.current.disconnect(state.analyser);
-      }
-      if (animationFrameIds[questionIndex]) {
-        cancelAnimationFrame(animationFrameIds[questionIndex]);
-        delete animationFrameIds[questionIndex];
-      }
-      
-      // Clear the canvas
-      const canvas = canvasRefs.current[questionIndex];
-      if (canvas) {
-        const canvasCtx = canvas.getContext('2d');
-        if (canvasCtx) {
-          canvasCtx.fillStyle = '#1a1a1a';
-          canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          // Draw a subtle "ready" indicator
-          canvasCtx.strokeStyle = '#333';
-          canvasCtx.lineWidth = 1;
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(0, canvas.height / 2);
-          canvasCtx.lineTo(canvas.width, canvas.height / 2);
-          canvasCtx.stroke();
+      // Clear canvas
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#1a1a1a';
+          ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         }
       }
       
       setQuestionStates(prev => ({
         ...prev,
-        [questionIndex]: { ...prev[questionIndex], isRecording: false, analyser: undefined }
+        [currentQuestionIndex]: {
+          ...prev[currentQuestionIndex],
+          isRecording: false,
+          audioChunks: [...audioChunksRef.current],
+        }
       }));
-      setActiveRecordingIndex(null);
+      
+      setDebugText('Recording stopped - processing audio...');
     }
   };
 
-  const handleSubmit = async (questionIndex: number) => {
-    const { audioChunks } = questionStates[questionIndex];
+  const handleSubmit = async () => {
+    const { audioChunks } = questionStates[currentQuestionIndex];
     if (audioChunks.length === 0) {
       toast({
         variant: 'destructive',
@@ -692,21 +337,26 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     }
     if (!supabase || !questions) return;
 
-
-    setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: true } }));
-    setDebugText(`Transcribing audio for question ${questionIndex + 1}...`);
+    setQuestionStates(prev => ({ 
+      ...prev, 
+      [currentQuestionIndex]: { 
+        ...prev[currentQuestionIndex], 
+        isTranscribing: true 
+      } 
+    }));
+    setDebugText('Transcribing audio...');
     
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     
     try {
-      // 1) Insert placeholder row so a response always appears immediately
+      // Insert placeholder row
       const { data: inserted, error: insertError } = await supabase
         .from('submissions')
         .insert({
           form_id: formId,
-          question_id: questions[questionIndex].id,
-          question_text: questions[questionIndex].text,
-          audio_url: '', // optional: upload to storage and set URL
+          question_id: questions[currentQuestionIndex].id,
+          question_text: questions[currentQuestionIndex].text,
+          audio_url: '',
           transcription: 'processing…',
           submitter_uid: user?.id ?? null,
         })
@@ -715,7 +365,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
 
       if (insertError) throw insertError;
 
-      // 2) Transcribe and update in-place using API endpoint
+      // Transcribe using API endpoint
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       
@@ -730,13 +380,14 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       
       const transcriptionResult = await transcriptionResponse.json();
       const transcriptionText = transcriptionResult.transcription || 'transcription unavailable';
-        
+      
+      // Update with transcription
       await supabase
         .from('submissions')
         .update({ transcription: transcriptionText })
         .eq('id', inserted.id);
 
-      // 3) Send to Google Sheets for structured data extraction
+      // Send to Google Sheets
       try {
         const sheetsResponse = await fetch('/api/google-sheets', {
           method: 'POST',
@@ -746,7 +397,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           body: JSON.stringify({
             formId: formId,
             transcription: transcriptionText,
-            questionText: questions[questionIndex].text,
+            questionText: questions[currentQuestionIndex].text,
           }),
         });
 
@@ -767,15 +418,17 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         title: 'Feedback Submitted!',
         description: `Transcription: "${transcriptionText}"`,
       });
+      
       setQuestionStates(prev => ({
         ...prev,
-        [questionIndex]: {
-          ...prev[questionIndex],
+        [currentQuestionIndex]: {
+          ...prev[currentQuestionIndex],
           isSubmitted: true,
           transcription: transcriptionText,
           isTranscribing: false,
         }
       }));
+      
     } catch (error) {
       console.error('Error transcribing audio:', error);
       setDebugText(`Transcription failed: ${error}`);
@@ -784,7 +437,13 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         title: 'Submission Failed',
         description: 'Could not transcribe your audio. Please try again.',
       });
-      setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isTranscribing: false } }));
+      setQuestionStates(prev => ({ 
+        ...prev, 
+        [currentQuestionIndex]: { 
+          ...prev[currentQuestionIndex], 
+          isTranscribing: false 
+        } 
+      }));
     }
   };
 
@@ -853,8 +512,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     );
   }
 
-  const isRecordingThis = currentQuestionState.isRecording;
-  const isRecordingAnother = activeRecordingIndex !== null && activeRecordingIndex !== currentQuestionIndex;
+  const isRecording = currentQuestionState.isRecording;
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-secondary py-12 px-4">
@@ -875,30 +533,31 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                     <div className="flex flex-col items-center gap-4">
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => handleMicrophoneAction(currentQuestionIndex)}
-                                disabled={isRecordingAnother || currentQuestionState.isSubmitted}
+                                onClick={isRecording ? stopRecording : startRecording}
+                                disabled={currentQuestionState.isSubmitted}
                                 className={`flex items-center justify-center w-20 h-20 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                isRecordingThis ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+                                isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
                                 }`}
-                                title={isRecordingThis ? 'Stop Recording' : (microphoneReady ? 'Start Recording' : 'Setup Microphone & Start Recording')}
                             >
-                                {isRecordingThis ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
+                                {isRecording ? <MicOff className="w-8 h-8 text-white" /> : <Mic className="w-8 h-8 text-white" />}
                             </button>
                             <div className="flex flex-col items-center">
                                 <canvas 
-                                    ref={el => { canvasRefs.current[currentQuestionIndex] = el; }}
+                                    ref={canvasRef}
                                     width="300"
                                     height="100"
                                     className="rounded-md bg-gray-900 border border-gray-700"
                                 ></canvas>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    {isRecordingThis ? '🔴 Recording...' : (microphoneReady ? 'Ready to record' : 'Click mic to setup & record')}
+                                    {isRecording ? '🔴 Recording...' : 'Ready to record'}
                                 </p>
                             </div>
                         </div>
+                        
                         <p className="text-sm text-muted-foreground h-5">
-                            {isRecordingThis ? 'Recording...' : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
+                            {isRecording ? 'Recording...' : (currentQuestionState.audioChunks.length > 0 && !currentQuestionState.isSubmitted ? 'Recording complete.' : 'Click mic to record.')}
                         </p>
+                        
                         {debugText && (
                             <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-2 rounded mt-2">
                                 <strong>Debug:</strong> {debugText}
@@ -913,8 +572,8 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
                         ) : (
                             <Button 
                             size="sm"
-                            onClick={() => handleSubmit(currentQuestionIndex)} 
-                            disabled={currentQuestionState.isTranscribing || currentQuestionState.audioChunks.length === 0 || isRecordingThis || isRecordingAnother}
+                            onClick={handleSubmit} 
+                            disabled={currentQuestionState.isTranscribing || currentQuestionState.audioChunks.length === 0 || isRecording}
                             >
                             {currentQuestionState.isTranscribing ? (
                                 <>
