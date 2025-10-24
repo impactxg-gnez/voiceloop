@@ -40,6 +40,77 @@ class GoogleSheetsService {
   }
 
   /**
+   * Create a user-specific folder (spreadsheet) for storing responses
+   */
+  async createUserFolder(userId: string, folderName: string): Promise<string> {
+    this.initialize();
+    
+    try {
+      // Create a new spreadsheet for the user
+      const spreadsheet = await this.sheets.spreadsheets.create({
+        requestBody: {
+          properties: {
+            title: folderName,
+          },
+          sheets: [{
+            properties: {
+              title: 'Responses',
+              gridProperties: {
+                rowCount: 1000,
+                columnCount: 10,
+              },
+            },
+          }],
+        },
+      });
+
+      const spreadsheetId = spreadsheet.data.spreadsheetId!;
+      
+      // Add headers to the sheet
+      await this.sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: 'Responses!A1:D1',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [['Timestamp', 'Question', 'Response', 'User ID']],
+        },
+      });
+
+      // Format headers
+      await this.sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [{
+            repeatCell: {
+              range: {
+                sheetId: 0,
+                startRowIndex: 0,
+                endRowIndex: 1,
+                startColumnIndex: 0,
+                endColumnIndex: 4,
+              },
+              cell: {
+                userEnteredFormat: {
+                  backgroundColor: { red: 0.2, green: 0.4, blue: 0.8 },
+                  textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+                },
+              },
+              fields: 'userEnteredFormat(backgroundColor,textFormat)',
+            },
+          }],
+        },
+      });
+
+      console.log(`Created user folder: ${folderName} (${spreadsheetId})`);
+      return spreadsheetId;
+      
+    } catch (error) {
+      console.error('Error creating user folder:', error);
+      throw new Error('Failed to create user folder');
+    }
+  }
+
+  /**
    * Parse transcribed text to extract structured data
    * Example: "My Name is Keval" -> { Name: "Keval" }
    */
@@ -245,6 +316,43 @@ class GoogleSheetsService {
     } catch (error) {
       console.error('Error adding response to Google Sheet:', error);
       throw new Error('Failed to add response to Google Sheet');
+    }
+  }
+
+  /**
+   * Add a response to a user-specific folder
+   */
+  async addResponseToUserFolder(folderId: string, transcription: string, questionText: string, userId: string): Promise<void> {
+    this.initialize();
+    
+    try {
+      const parsedData = this.parseTranscription(transcription);
+      const timestamp = new Date().toISOString();
+      
+      // Prepare the row data with standard format
+      const rowData = [
+        timestamp,
+        questionText,
+        transcription,
+        userId,
+        ...Object.values(parsedData)
+      ];
+      
+      // Add the response to the user's folder
+      await this.sheets.spreadsheets.values.append({
+        spreadsheetId: folderId,
+        range: 'Responses!A:Z',
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [rowData],
+        },
+      });
+      
+      console.log(`Added response to user folder: ${folderId}`);
+      
+    } catch (error) {
+      console.error('Error adding response to user folder:', error);
+      throw new Error('Failed to add response to user folder');
     }
   }
 

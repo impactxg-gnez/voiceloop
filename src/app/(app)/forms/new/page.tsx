@@ -14,6 +14,7 @@ import { FormPageManager } from '@/components/form-page-manager';
 import { DemographicsFieldsManager, type DemographicField } from '@/components/demographics-fields-manager';
 import { AISuggestionBuilder } from '@/components/ai-suggestion-builder';
 import { GoogleSheetsInfo } from '@/components/google-sheets-info';
+import { GoogleDriveLink } from '@/components/google-drive-link';
 
 type Question = {
   id: number;
@@ -620,8 +621,9 @@ export default function NewFormPage() {
 
         {/* Google Sheets Integration Info */}
         {createdFormId && (
-          <div className="max-w-2xl mx-auto mt-6">
+          <div className="max-w-2xl mx-auto mt-6 space-y-4">
             <GoogleSheetsInfo formId={createdFormId} />
+            <GoogleDriveLink formId={createdFormId} />
           </div>
         )}
       </main>

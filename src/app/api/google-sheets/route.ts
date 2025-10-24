@@ -21,7 +21,7 @@ const getSupabaseClient = () => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { formId, transcription, questionText } = await request.json();
+    const { formId, transcription, questionText, userId } = await request.json();
 
     if (!formId || !transcription) {
       return NextResponse.json(
@@ -46,8 +46,22 @@ export async function POST(request: NextRequest) {
       questionText
     });
 
-    // Get form details
+    // Get form details and check for user-specific Google Drive link
     const supabase = getSupabaseClient();
+    
+    // First check if user has a specific Google Drive folder linked
+    let userDriveLink = null;
+    if (userId) {
+      const { data: driveLinkData } = await supabase
+        .from('user_google_drive_links')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('form_id', formId)
+        .single();
+      
+      userDriveLink = driveLinkData;
+    }
+
     const { data: form, error: formError } = await supabase
       .from('forms')
       .select('id, title')
@@ -69,29 +83,51 @@ export async function POST(request: NextRequest) {
     const parsedData = googleSheetsService.parseTranscription(transcription);
     console.log('Parsed data:', parsedData);
 
-    // Create or get Google Sheet for this form
-    const sheetConfig = await googleSheetsService.createOrGetSheet(formId, form.title);
-    console.log('Sheet config:', sheetConfig);
+    let result;
+    let sheetUrl;
+    let spreadsheetId;
 
-    // Add response to Google Sheet
-    const result = await googleSheetsService.addResponse(sheetConfig, parsedData);
-    
-    // Store sheet mapping in database for future reference
-    await supabase
-      .from('form_sheet_mappings')
-      .upsert({
-        form_id: formId,
-        spreadsheet_id: sheetConfig.spreadsheetId,
-        sheet_name: sheetConfig.sheetName,
-        sheet_url: googleSheetsService.getSheetUrl(sheetConfig.spreadsheetId),
-        created_at: new Date().toISOString()
-      });
+    if (userDriveLink) {
+      // Use user-specific Google Drive folder
+      console.log('Using user-specific Google Drive folder:', userDriveLink.folder_id);
+      await googleSheetsService.addResponseToUserFolder(
+        userDriveLink.folder_id,
+        transcription,
+        questionText || 'Voice Response',
+        userId || 'anonymous'
+      );
+      
+      sheetUrl = userDriveLink.folder_url;
+      spreadsheetId = userDriveLink.folder_id;
+      result = { success: true, userFolder: true };
+    } else {
+      // Use default form sheet
+      const sheetConfig = await googleSheetsService.createOrGetSheet(formId, form.title);
+      console.log('Sheet config:', sheetConfig);
+
+      result = await googleSheetsService.addResponse(sheetConfig, parsedData);
+      
+      // Store sheet mapping in database for future reference
+      await supabase
+        .from('form_sheet_mappings')
+        .upsert({
+          form_id: formId,
+          spreadsheet_id: sheetConfig.spreadsheetId,
+          sheet_name: sheetConfig.sheetName,
+          sheet_url: googleSheetsService.getSheetUrl(sheetConfig.spreadsheetId),
+          created_at: new Date().toISOString()
+        });
+
+      sheetUrl = googleSheetsService.getSheetUrl(sheetConfig.spreadsheetId);
+      spreadsheetId = sheetConfig.spreadsheetId;
+    }
 
     return NextResponse.json({
       success: true,
       parsedData,
-      sheetUrl: googleSheetsService.getSheetUrl(sheetConfig.spreadsheetId),
-      spreadsheetId: sheetConfig.spreadsheetId
+      sheetUrl,
+      spreadsheetId,
+      userFolder: !!userDriveLink
     });
 
   } catch (error: any) {

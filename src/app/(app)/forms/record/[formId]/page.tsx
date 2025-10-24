@@ -607,6 +607,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
             formId: formId,
             transcription: transcriptionText,
             questionText: questions[currentQuestionIndex].text,
+            userId: user?.id,
           }),
         });
 
