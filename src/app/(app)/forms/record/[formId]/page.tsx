@@ -24,6 +24,7 @@ type QuestionState = {
   audioUrl?: string;
   isGeneratingAudio: boolean;
   isPlayingAudio: boolean;
+  stopDrawing?: () => void;
 };
 
 type FormDoc = { title: string };
@@ -308,7 +309,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestionIndex]);
 
-  const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number) => {
+  const draw = (analyser: AnalyserNode, canvas: HTMLCanvasElement, questionIndex: number, isRecording: boolean = false) => {
     console.log('=== WAVEFORM DEBUG START ===');
     console.log('Canvas element:', canvas);
     console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
@@ -328,7 +329,9 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     console.log('Starting waveform drawing for question:', questionIndex);
     
     let frameCount = 0;
-    let isDrawing = true; // Local flag to control drawing
+    let isDrawing = isRecording; // Use the passed parameter
+    
+    console.log('Drawing started with isRecording:', isRecording);
     
     const drawFrame = () => {
       frameCount++;
@@ -339,7 +342,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         return;
       }
       
-      // Check current state (not closure values)
+      // Check if we should stop based on current state
       const currentActiveIndex = activeRecordingIndex;
       const currentQuestionState = questionStates[questionIndex];
       
@@ -417,6 +420,12 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     
     console.log('=== WAVEFORM DEBUG END - Starting draw loop ===');
     drawFrame();
+    
+    // Return a function to stop drawing
+    return () => {
+      isDrawing = false;
+      console.log('Drawing stopped externally');
+    };
   };
 
 
@@ -575,7 +584,17 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           console.log('✅ Canvas test pattern drawn');
         }
         
-        draw(analyser, canvas, questionIndex);
+        // Pass recording state directly to avoid React state timing issues
+        const stopDrawing = draw(analyser, canvas, questionIndex, true);
+        
+        // Store the stop function for later use
+        setQuestionStates(prev => ({
+          ...prev,
+          [questionIndex]: {
+            ...prev[questionIndex],
+            stopDrawing,
+          }
+        }));
       } else {
         console.warn('❌ Canvas not found for waveform visualization');
       }
@@ -621,6 +640,12 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       }, 10000); // 10 second timeout
 
       const state = questionStates[questionIndex];
+      
+      // Stop the waveform drawing
+      if (state.stopDrawing) {
+        state.stopDrawing();
+      }
+      
       if (state.analyser && audioStreamSourceRef.current) {
         audioStreamSourceRef.current.disconnect(state.analyser);
       }
@@ -628,9 +653,6 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         cancelAnimationFrame(animationFrameIds[questionIndex]);
         delete animationFrameIds[questionIndex];
       }
-      
-      // Set the local drawing flag to false to stop any ongoing drawing
-      // This will be handled by the draw function's local isDrawing flag
       
       // Clear the canvas
       const canvas = canvasRefs.current[questionIndex];
