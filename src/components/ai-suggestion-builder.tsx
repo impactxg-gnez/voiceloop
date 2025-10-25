@@ -225,10 +225,9 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
 
         const canvas = canvasRef.current;
         if (canvas) {
-          // Set canvas size to match display size
-          const rect = canvas.getBoundingClientRect();
-          canvas.width = rect.width;
-          canvas.height = rect.height;
+          // Set fixed canvas size for better visibility
+          canvas.width = 600;
+          canvas.height = 96;
           
           const ctx = canvas.getContext('2d');
           if (ctx) {
@@ -236,7 +235,12 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
             const dataArray = new Uint8Array(bufferLength);
             
             const draw = () => {
-              if (!isRecording) return;
+              // Check if still recording and canvas exists
+              if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
+                console.log('Stopping waveform animation - recording stopped');
+                return;
+              }
+              
               animationFrameRef.current = requestAnimationFrame(draw);
               
               analyser.getByteTimeDomainData(dataArray);
@@ -245,12 +249,20 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
               ctx.fillStyle = '#1e293b';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               
+              // Center line for reference
+              ctx.strokeStyle = '#475569';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(0, canvas.height / 2);
+              ctx.lineTo(canvas.width, canvas.height / 2);
+              ctx.stroke();
+              
               // Waveform
-              ctx.lineWidth = 3;
+              ctx.lineWidth = 2;
               ctx.strokeStyle = '#3b82f6'; // Blue color
               ctx.beginPath();
               
-              const sliceWidth = canvas.width / bufferLength;
+              const sliceWidth = (canvas.width * 1.0) / bufferLength;
               let x = 0;
               
               for (let i = 0; i < bufferLength; i++) {
@@ -268,19 +280,15 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
               
               ctx.lineTo(canvas.width, canvas.height / 2);
               ctx.stroke();
-              
-              // Center line for reference
-              ctx.strokeStyle = '#475569';
-              ctx.lineWidth = 1;
-              ctx.beginPath();
-              ctx.moveTo(0, canvas.height / 2);
-              ctx.lineTo(canvas.width, canvas.height / 2);
-              ctx.stroke();
             };
             
-            console.log('Starting waveform animation');
+            console.log('Starting waveform animation, canvas size:', canvas.width, 'x', canvas.height);
             draw();
+          } else {
+            console.error('Could not get canvas context');
           }
+        } else {
+          console.error('Canvas ref is null');
         }
       } catch (err) {
         console.error('Error setting up audio visualization:', err);
@@ -449,8 +457,11 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
     }
   };
 
-  const addSuggestion = (suggestion: any) => {
+  const addSuggestion = (index: number) => {
     try {
+      const suggestion = suggestions[index];
+      if (!suggestion) return;
+      
       // Handle both string and object formats
       const suggestionText = typeof suggestion === 'string' 
         ? suggestion 
@@ -462,7 +473,17 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
           ? { question: suggestion, type: 'voice', options: [] }
           : suggestion;
         
-        onSuggestionsGenerated([...(suggestions || []), suggestionObj]);
+        // Pass the suggestion to parent without the current suggestions array
+        // The parent component will handle adding it to the form
+        onSuggestionsGenerated([suggestionObj]);
+        
+        // Remove from local suggestions list to prevent duplicates
+        removeSuggestion(index);
+        
+        toast({
+          title: 'Question Added',
+          description: 'The question has been added to your form.',
+        });
       }
     } catch (error) {
       console.error('Error adding suggestion:', error);
@@ -472,7 +493,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
   const removeSuggestion = (index: number) => {
     const newSuggestions = (suggestions || []).filter((_, i) => i !== index);
     setSuggestions(newSuggestions);
-    onSuggestionsGenerated(newSuggestions);
+    // Don't call onSuggestionsGenerated here - we only want to update local state
   };
 
   return (
@@ -545,11 +566,13 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                   
                   {/* Waveform visualization */}
                   {isRecording && (
-                    <div className="space-y-2">
+                    <div className="space-y-2 mt-4">
                       <canvas 
                         ref={canvasRef} 
                         className="w-full h-24 rounded-lg border-2 border-blue-500 bg-slate-800"
-                        style={{ display: 'block' }}
+                        width={600}
+                        height={96}
+                        style={{ display: 'block', width: '100%', height: '96px' }}
                       />
                       <p className="text-xs text-center text-blue-400 font-medium animate-pulse">
                         🎤 Recording in progress... Speak clearly into your microphone
@@ -680,7 +703,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => addSuggestion(suggestion)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          addSuggestion(index);
+                        }}
                         className="text-green-600 hover:text-green-700"
                       >
                         <CheckCircle className="h-4 w-4" />
@@ -688,7 +714,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeSuggestion(index)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          removeSuggestion(index);
+                        }}
                         className="text-red-600 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
