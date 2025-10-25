@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ExternalLink, Download, Calendar, User, FileText } from 'lucide-react';
+import { Loader2, ExternalLink, Download, Calendar, User, FileText, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useUser, useCollection } from '@/supabase';
+import { useUser, useCollection, useSupabaseClient } from '@/supabase';
 
 interface ResponseData {
   id: string;
@@ -21,12 +21,14 @@ interface ResponseData {
 export function ResponsesTab({ formId }: { formId: string }) {
   const { toast } = useToast();
   const { user } = useUser();
+  const supabase = useSupabaseClient();
   const [responses, setResponses] = useState<ResponseData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Fetch responses from Supabase
-  const { data: responsesData, loading: responsesLoading } = useCollection<ResponseData>(
+  const { data: responsesData, loading: responsesLoading, refetch } = useCollection<ResponseData>(
     'form_responses',
     '*',
     { form_id: formId }
@@ -41,6 +43,37 @@ export function ResponsesTab({ formId }: { formId: string }) {
   useEffect(() => {
     setIsLoading(responsesLoading);
   }, [responsesLoading]);
+
+  // Manual refresh function
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const { data, error } = await supabase
+        .from('form_responses')
+        .select('*')
+        .eq('form_id', formId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (data) {
+        setResponses(data);
+        toast({
+          title: 'Refreshed',
+          description: 'Responses have been updated.',
+        });
+      }
+    } catch (error) {
+      console.error('Error refreshing responses:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Refresh Failed',
+        description: 'Could not refresh responses.',
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const exportToCSV = () => {
     if (responses.length === 0) {
@@ -128,26 +161,46 @@ export function ResponsesTab({ formId }: { formId: string }) {
               <Calendar className="h-5 w-5" />
               Responses ({responses.length})
             </span>
-            {responses.length > 0 && (
+            <div className="flex gap-2">
               <Button 
-                onClick={exportToCSV}
-                disabled={isExporting}
-                variant="outline"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                variant="ghost"
                 size="sm"
               >
-                {isExporting ? (
+                {isRefreshing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Exporting...
+                    Refreshing...
                   </>
                 ) : (
                   <>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
                   </>
                 )}
               </Button>
-            )}
+              {responses.length > 0 && (
+                <Button 
+                  onClick={exportToCSV}
+                  disabled={isExporting}
+                  variant="outline"
+                  size="sm"
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export CSV
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </CardTitle>
           <CardDescription>
             All responses submitted for this form.

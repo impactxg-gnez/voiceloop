@@ -615,13 +615,24 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       setProcessingProgress(95);
       setDebugText('Saving data to database...');
       
-        await supabase
-          .from('form_responses')
+      const { error: updateError } = await supabase
+        .from('form_responses')
         .update({ 
           response_text: transcriptionText,
           parsed_fields: parsedFields
         })
-          .eq('id', inserted.id);
+        .eq('id', inserted.id);
+
+      if (updateError) {
+        console.error('Error updating response:', updateError);
+        throw new Error(`Failed to update response: ${updateError.message}`);
+      }
+
+      console.log('Successfully updated response with transcription:', {
+        id: inserted.id,
+        transcriptionText,
+        parsedFields
+      });
 
       // Step 5: Complete (100%)
       setProcessingProgress(100);
