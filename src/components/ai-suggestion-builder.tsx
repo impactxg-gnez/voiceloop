@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { Mic, MicOff, Loader2, Sparkles, CheckCircle, Trash2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -533,13 +534,27 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                     </p>
                   )}
                   
-                  {description && (
-                    <Textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="min-h-[100px] resize-none"
-                      disabled={isGenerating}
-                    />
+                  {description && !isRecording && !isGenerating && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Transcribed Text:</Label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDescription('')}
+                          disabled={isGenerating}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Clear
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className="min-h-[100px] resize-none"
+                        disabled={isGenerating}
+                      />
+                    </div>
                   )}
                 </div>
               ) : (

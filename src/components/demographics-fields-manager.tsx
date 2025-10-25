@@ -32,6 +32,7 @@ interface Props {
 
 // Pre-defined common demographic fields
 const COMMON_DEMOGRAPHICS: DemographicField[] = [
+  { field_key: 'name', label: 'Name', input_type: 'text', required: true },
   { field_key: 'age', label: 'Age', input_type: 'number', required: true },
   { field_key: 'gender', label: 'Gender', input_type: 'select', required: true, options: ['Male', 'Female', 'Other', 'Prefer not to say'] },
   { field_key: 'city', label: 'City', input_type: 'text', required: true },
