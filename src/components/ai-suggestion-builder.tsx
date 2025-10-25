@@ -133,8 +133,8 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       console.log('Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
+          echoCancellation: false,  // Disable for better quality
+          noiseSuppression: false,   // Disable for better quality
           autoGainControl: true,
           sampleRate: 48000,
           channelCount: 1
@@ -208,35 +208,46 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       // Set up audio visualization BEFORE starting recording
       try {
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
-          sampleRate: 44100
+          sampleRate: 48000
         });
         audioContextRef.current = audioCtx;
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
         
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.8;
+        // Better settings for visible waveform
+        analyser.fftSize = 4096;
+        analyser.smoothingTimeConstant = 0.5;
+        analyser.minDecibels = -90;
+        analyser.maxDecibels = -10;
         
         source.connect(analyser);
         analyserRef.current = analyser;
 
         const canvas = canvasRef.current;
         if (canvas) {
+          // Set canvas size to match display size
+          const rect = canvas.getBoundingClientRect();
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+          
           const ctx = canvas.getContext('2d');
           if (ctx) {
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             
             const draw = () => {
+              if (!isRecording) return;
               animationFrameRef.current = requestAnimationFrame(draw);
               
               analyser.getByteTimeDomainData(dataArray);
               
-              ctx.fillStyle = 'rgb(20, 20, 30)';
+              // Dark background
+              ctx.fillStyle = '#1e293b';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               
-              ctx.lineWidth = 2;
-              ctx.strokeStyle = 'rgb(59, 130, 246)'; // Blue color
+              // Waveform
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = '#3b82f6'; // Blue color
               ctx.beginPath();
               
               const sliceWidth = canvas.width / bufferLength;
@@ -257,8 +268,17 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
               
               ctx.lineTo(canvas.width, canvas.height / 2);
               ctx.stroke();
+              
+              // Center line for reference
+              ctx.strokeStyle = '#475569';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(0, canvas.height / 2);
+              ctx.lineTo(canvas.width, canvas.height / 2);
+              ctx.stroke();
             };
             
+            console.log('Starting waveform animation');
             draw();
           }
         }
@@ -317,7 +337,12 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       const extension = audioBlob.type.includes('webm') ? 'webm' : 'wav';
       formData.append('audio', audioBlob, `recording.${extension}`);
 
-      console.log('Sending to transcription API...');
+      console.log('Sending to transcription API...', {
+        blobSize: audioBlob.size,
+        blobType: audioBlob.type,
+        filename: `recording.${extension}`
+      });
+      
       const response = await fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
@@ -523,12 +548,11 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                     <div className="space-y-2">
                       <canvas 
                         ref={canvasRef} 
-                        width={600} 
-                        height={100} 
-                        className="w-full rounded-lg border border-border bg-slate-900"
+                        className="w-full h-24 rounded-lg border-2 border-blue-500 bg-slate-800"
+                        style={{ display: 'block' }}
                       />
-                      <p className="text-xs text-center text-muted-foreground animate-pulse">
-                        🎤 Recording in progress... Click "Stop Recording" when done
+                      <p className="text-xs text-center text-blue-400 font-medium animate-pulse">
+                        🎤 Recording in progress... Speak clearly into your microphone
                       </p>
                     </div>
                   )}

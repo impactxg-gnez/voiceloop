@@ -67,6 +67,137 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
     }
   };
 
+  // Auto-fill fields from transcribed text
+  const autoFillFields = (transcribedText: string) => {
+    if (!configuredFields || configuredFields.length === 0) return;
+    
+    const text = transcribedText.toLowerCase();
+    const updates: Record<string, string> = {};
+    
+    configuredFields.forEach((field: any) => {
+      const fieldKey = field.field_key.toLowerCase();
+      const fieldLabel = field.label.toLowerCase();
+      
+      try {
+        // Extract name
+        if (fieldKey === 'name') {
+          // Look for patterns like "my name is X", "I am X", "this is X", "name is X"
+          const namePatterns = [
+            /(?:my name is|i am|this is|i'm|name is|call me)\s+([a-zA-Z\s]+?)(?:\.|,|\s+and|\s+i\s|$)/i,
+            /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/  // Capitalize name at start
+          ];
+          
+          for (const pattern of namePatterns) {
+            const match = transcribedText.match(pattern);
+            if (match && match[1]) {
+              const extractedName = match[1].trim();
+              // Validate name (at least 2 characters, not common words)
+              if (extractedName.length >= 2 && !['years', 'year', 'male', 'female'].includes(extractedName.toLowerCase())) {
+                updates[field.field_key] = extractedName;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Extract age
+        if (fieldKey === 'age') {
+          const agePatterns = [
+            /(\d{1,3})\s*(?:years old|year old|years|yrs|yr)/i,
+            /age\s*(?:is|:)?\s*(\d{1,3})/i,
+            /i'?m\s*(\d{1,3})/i
+          ];
+          
+          for (const pattern of agePatterns) {
+            const match = text.match(pattern);
+            if (match && match[1]) {
+              const age = parseInt(match[1]);
+              if (age >= 1 && age <= 150) {  // Reasonable age range
+                updates[field.field_key] = age.toString();
+                break;
+              }
+            }
+          }
+        }
+        
+        // Extract gender
+        if (fieldKey === 'gender') {
+          if (text.includes('male') && !text.includes('female')) {
+            updates[field.field_key] = 'Male';
+          } else if (text.includes('female')) {
+            updates[field.field_key] = 'Female';
+          } else if (text.includes('man') || text.includes('boy')) {
+            updates[field.field_key] = 'Male';
+          } else if (text.includes('woman') || text.includes('girl')) {
+            updates[field.field_key] = 'Female';
+          } else if (text.includes('non-binary') || text.includes('nonbinary') || text.includes('other')) {
+            updates[field.field_key] = 'Other';
+          }
+        }
+        
+        // Extract city
+        if (fieldKey === 'city') {
+          const cityPatterns = [
+            /(?:from|in|at|live in|city is|city:)\s+([A-Z][a-zA-Z\s]+?)(?:\.|,|\s+and|\s+i\s|$)/,
+            /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+city/i
+          ];
+          
+          for (const pattern of cityPatterns) {
+            const match = transcribedText.match(pattern);
+            if (match && match[1]) {
+              const city = match[1].trim();
+              if (city.length >= 2) {
+                updates[field.field_key] = city;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Extract education level
+        if (fieldKey === 'education') {
+          if (text.includes('phd') || text.includes('doctorate')) {
+            updates[field.field_key] = 'PhD';
+          } else if (text.includes('master') || text.includes('masters')) {
+            updates[field.field_key] = "Master's Degree";
+          } else if (text.includes('bachelor') || text.includes('bachelors') || text.includes('college degree')) {
+            updates[field.field_key] = "Bachelor's Degree";
+          } else if (text.includes('high school') || text.includes('secondary')) {
+            updates[field.field_key] = 'High School';
+          }
+        }
+        
+        // Extract employment status
+        if (fieldKey === 'employment') {
+          if (text.includes('self-employed') || text.includes('freelance') || text.includes('own business')) {
+            updates[field.field_key] = 'Self-Employed';
+          } else if (text.includes('employed') || text.includes('working') || text.includes('job')) {
+            updates[field.field_key] = 'Employed';
+          } else if (text.includes('student') || text.includes('studying')) {
+            updates[field.field_key] = 'Student';
+          } else if (text.includes('retired')) {
+            updates[field.field_key] = 'Retired';
+          } else if (text.includes('unemployed') || text.includes('looking for work')) {
+            updates[field.field_key] = 'Unemployed';
+          }
+        }
+      } catch (error) {
+        console.error(`Error extracting ${fieldKey}:`, error);
+      }
+    });
+    
+    // Apply the updates
+    if (Object.keys(updates).length > 0) {
+      console.log('Auto-filled fields:', updates);
+      setFieldValues(prev => ({ ...prev, ...updates }));
+      
+      toast({
+        title: 'Fields Auto-Filled!',
+        description: `Automatically filled ${Object.keys(updates).length} field(s) from your voice input.`,
+      });
+    }
+  };
+
   // Server-side transcription fallback
   const transcribeWithServer = async (audioBlob: Blob) => {
     try {
@@ -108,6 +239,9 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
       if (transcribedText.trim()) {
         setText(transcribedText);
         setDebugText(`Server transcription: "${transcribedText}"`);
+        
+        // Auto-fill demographic fields from transcription
+        autoFillFields(transcribedText);
       } else {
         setDebugText('Server transcription returned empty result');
       }
