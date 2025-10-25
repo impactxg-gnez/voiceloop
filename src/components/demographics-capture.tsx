@@ -27,7 +27,6 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -35,7 +34,6 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
   const [recordMs, setRecordMs] = useState(0);
   const recordStartRef = useRef<number | null>(null);
   const [hasVoiceInput, setHasVoiceInput] = useState(false);
-  const hasSpokenRef = useRef(false);
   const { data: configuredFields, loading: fieldsLoading } = useCollection<any>('form_demographic_fields', '*', { form_id: formId });
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [debugText, setDebugText] = useState('');
@@ -151,26 +149,8 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
     };
   }, [configuredFields]);
 
-  // TTS welcome prompt (single play unless user presses Replay)
-  const speak = (message: string) => {
-    try {
-      try { window.speechSynthesis.cancel(); } catch {}
-      const utter = new SpeechSynthesisUtterance(message);
-      utter.onstart = () => setIsSpeaking(true);
-      utter.onend = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utter);
-    } catch {}
-  };
-
-  useEffect(() => {
-    if (!hasSpokenRef.current) {
-      hasSpokenRef.current = true;
-      speak(dynamicContent.prompt);
-    }
-    return () => {
-      try { window.speechSynthesis.cancel(); } catch {}
-    };
-  }, [dynamicContent.prompt]);
+  // TTS disabled - no voice prompts
+  // Users can read the instructions on screen
 
   const startRecording = async () => {
     try {
@@ -468,11 +448,8 @@ export function DemographicsCapture({ formId, onContinue }: Props) {
                   {isProcessingVoice ? 'Processing...' : 'Start'}
                 </Button>
               )}
-              <Button variant="outline" onClick={() => { try { window.speechSynthesis.cancel(); } catch {}; if (isRecording) stopRecording(); setMode(mode === 'voice' ? 'text' : 'voice'); }}>
+              <Button variant="outline" onClick={() => { if (isRecording) stopRecording(); setMode(mode === 'voice' ? 'text' : 'voice'); }}>
                 Switch to {mode === 'voice' ? 'text' : 'voice'}
-              </Button>
-              <Button variant="ghost" onClick={() => speak(dynamicContent.prompt)} disabled={isSpeaking}>
-                Replay prompt
               </Button>
             </div>
             <div className="flex justify-center">

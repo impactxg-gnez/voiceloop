@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, Send, Loader2, CheckCircle, Play, Volume2, ArrowLeft, ArrowRight } from 'lucide-react';
-import { generateQuestionAudio } from '@/ai/flows/generate-question-audio';
+import { Mic, MicOff, Send, Loader2, CheckCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { useCollection, useDoc, useSupabaseClient, useUser } from '@/supabase';
@@ -20,9 +19,6 @@ type QuestionState = {
   isSubmitted: boolean;
   audioChunks: Blob[];
   transcription?: string;
-  audioUrl?: string;
-  isGeneratingAudio: boolean;
-  isPlayingAudio: boolean;
 };
 
 type FormDoc = { title: string };
@@ -77,8 +73,6 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
         isTranscribing: false,
         isSubmitted: false,
         audioChunks: [],
-        isGeneratingAudio: false,
-        isPlayingAudio: false,
       };
     });
     setQuestionStates(initialStates);
@@ -88,19 +82,6 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
     audioRef.current = new Audio();
     
     const currentAudioRef = audioRef.current;
-    const onEnded = () => {
-      setQuestionStates(prevStates => {
-        const newStates = {...prevStates};
-        for (const index in newStates) {
-          if (newStates[index].isPlayingAudio) {
-            newStates[index] = { ...newStates[index], isPlayingAudio: false };
-          }
-        }
-        return newStates;
-      });
-    }
-    
-    currentAudioRef.addEventListener('ended', onEnded);
 
     return () => {
       if (animationFrameRef.current) {
@@ -112,77 +93,10 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
-      if (currentAudioRef) {
-        currentAudioRef.removeEventListener('ended', onEnded);
-      }
     };
   }, []);
 
-  useEffect(() => {
-    if (Object.keys(questionStates).length > 0) {
-      handlePlayQuestion(currentQuestionIndex);
-    }
-  }, [currentQuestionIndex]);
-
-  const handlePlayQuestion = useCallback(async (questionIndex: number) => {
-    const state = questionStates[questionIndex];
-    if (!questions || !state) return;
-    
-    const questionText = questions[questionIndex].text;
-    
-    if (state.isPlayingAudio && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: false } }));
-      return;
-    }
-
-    if (audioRef.current && !audioRef.current.paused) {
-      audioRef.current.pause();
-      const newStates = { ...questionStates };
-      Object.keys(newStates).forEach(key => {
-        const index = parseInt(key);
-        if (index !== questionIndex) {
-            newStates[index] = { ...newStates[index], isPlayingAudio: false };
-        }
-      });
-      setQuestionStates(newStates);
-    }
-
-    if (state.audioUrl && audioRef.current) {
-        audioRef.current.src = state.audioUrl;
-        audioRef.current.play();
-        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isPlayingAudio: true } }));
-        return;
-    }
-
-    setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: true } }));
-
-    try {
-        const result = await generateQuestionAudio({ question: questionText });
-        if (audioRef.current) {
-            audioRef.current.src = result.audioUrl;
-            audioRef.current.play();
-        }
-        setQuestionStates(prev => ({
-            ...prev,
-            [questionIndex]: {
-                ...prev[questionIndex],
-                audioUrl: result.audioUrl,
-                isGeneratingAudio: false,
-                isPlayingAudio: true,
-            }
-        }));
-    } catch (error) {
-        console.error('Error generating audio:', error);
-        toast({
-            variant: 'destructive',
-            title: 'Audio Generation Failed',
-            description: 'Could not generate audio for the question.',
-        });
-        setQuestionStates(prev => ({ ...prev, [questionIndex]: { ...prev[questionIndex], isGeneratingAudio: false } }));
-    }
-  }, [questions, questionStates, toast]);
+  // Audio generation removed - users can read the question on screen
 
   const drawWaveform = () => {
     if (!analyserRef.current || !canvasRef.current) return;
@@ -867,16 +781,7 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
             </CardContent>
         </Card>
 
-        <div className="w-full max-w-2xl mx-auto flex justify-between items-center">
-             <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => handlePlayQuestion(currentQuestionIndex)}
-                disabled={currentQuestionState.isGeneratingAudio}
-                title="Play question audio"
-              >
-                {currentQuestionState.isGeneratingAudio ? <Loader2 className="h-5 w-5 animate-spin" /> : (currentQuestionState.isPlayingAudio ? <Volume2 className="h-5 w-5" /> : <Play className="h-5 w-5" />) }
-              </Button>
+        <div className="w-full max-w-2xl mx-auto flex justify-end items-center">
             <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setCurrentQuestionIndex(prev => prev - 1)} disabled={currentQuestionIndex === 0}>
                     <ArrowLeft className="mr-2 h-4 w-4" />

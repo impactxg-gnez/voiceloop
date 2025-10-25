@@ -135,7 +135,9 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1
         } 
       });
       
@@ -316,7 +318,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       formData.append('audio', audioBlob, `recording.${extension}`);
 
       console.log('Sending to transcription API...');
-      const response = await fetch('/api/test-transcribe', {
+      const response = await fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
       });
@@ -459,7 +461,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
           <Button
             variant={enabled ? "default" : "outline"}
             size="sm"
-            onClick={() => onToggle(!enabled)}
+            onClick={(e) => {
+              e.preventDefault();
+              onToggle(!enabled);
+            }}
           >
             {enabled ? 'Enabled' : 'Enable AI'}
           </Button>
@@ -477,7 +482,14 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                     <Button
                       variant={isRecording ? "destructive" : "default"}
                       size="lg"
-                      onClick={isRecording ? stopRecording : startRecording}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (isRecording) {
+                          stopRecording();
+                        } else {
+                          startRecording();
+                        }
+                      }}
                       disabled={isGenerating}
                       className="flex-1"
                     >
@@ -496,7 +508,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsVoiceMode(false)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setIsVoiceMode(false);
+                      }}
                       disabled={isRecording || isGenerating}
                     >
                       Switch to text
@@ -541,7 +556,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setDescription('')}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setDescription('');
+                          }}
                           disabled={isGenerating}
                         >
                           <X className="h-4 w-4 mr-1" />
@@ -572,7 +590,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setIsVoiceMode(true)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setIsVoiceMode(true);
+                    }}
                     disabled={isGenerating}
                   >
                     <Mic className="h-4 w-4 mr-2" />
