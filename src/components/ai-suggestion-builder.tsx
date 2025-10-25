@@ -29,6 +29,24 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
   const animationFrameRef = useRef<number | null>(null);
   const { toast } = useToast();
 
+  // Cleanup effect for audio resources
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioContextRef.current) {
+        try {
+          audioContextRef.current.close();
+        } catch {}
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, []);
+
   const generateFormTitle = (description: string): string => {
     const desc = description.toLowerCase();
     
@@ -184,12 +202,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
         analyserRef.current = null;
       };
 
-      // Start recording without time slice to capture all data at once
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-      console.log('Recording started with mimeType:', mediaRecorderRef.current.mimeType);
-      
-      // Set up audio visualization
+      // Set up audio visualization BEFORE starting recording
       try {
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
           sampleRate: 44100
@@ -212,11 +225,6 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
             const dataArray = new Uint8Array(bufferLength);
             
             const draw = () => {
-              if (!isRecording && animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-                return;
-              }
-              
               animationFrameRef.current = requestAnimationFrame(draw);
               
               analyser.getByteTimeDomainData(dataArray);
@@ -254,6 +262,11 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       } catch (err) {
         console.error('Error setting up audio visualization:', err);
       }
+      
+      // Start recording with timeslice to collect data chunks
+      mediaRecorderRef.current.start(1000); // Collect data every second
+      setIsRecording(true);
+      console.log('Recording started with mimeType:', mediaRecorderRef.current.mimeType);
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
@@ -265,11 +278,16 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('Stopping recording...');
       // Request any remaining data before stopping
-      if (mediaRecorderRef.current.state === 'recording') {
+      try {
         mediaRecorderRef.current.requestData();
+      } catch (e) {
+        console.warn('Error requesting final data:', e);
       }
+      
+      // Stop the recording - this will trigger onstop event
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       
@@ -278,6 +296,8 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
+      
+      console.log('Recording stopped, waiting for onstop event...');
     }
   };
 
@@ -489,15 +509,25 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                         ref={canvasRef} 
                         width={600} 
                         height={100} 
-                        className="w-full rounded-lg border border-border"
+                        className="w-full rounded-lg border border-border bg-slate-900"
                       />
                       <p className="text-xs text-center text-muted-foreground animate-pulse">
-                        🎤 Recording in progress...
+                        🎤 Recording in progress... Click "Stop Recording" when done
                       </p>
                     </div>
                   )}
                   
-                  {!isRecording && !description && (
+                  {/* Transcribing indicator */}
+                  {isGenerating && !isRecording && (
+                    <div className="flex items-center justify-center gap-2 p-4 border rounded-lg bg-muted/30">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <p className="text-sm text-muted-foreground">
+                        Transcribing your audio...
+                      </p>
+                    </div>
+                  )}
+                  
+                  {!isRecording && !isGenerating && !description && (
                     <p className="text-xs text-muted-foreground">
                       For best results tell us: use case, target audience, and what questions you want to answer
                     </p>
