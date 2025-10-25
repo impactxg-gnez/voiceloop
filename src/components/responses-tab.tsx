@@ -18,11 +18,25 @@ interface ResponseData {
   user_id: string;
 }
 
+interface DemographicData {
+  id: string;
+  form_id: string;
+  submitter_uid: string | null;
+  raw_text: string;
+  parsed_json: Record<string, any>;
+  age: string | null;
+  city: string | null;
+  gender: string | null;
+  source: string;
+  created_at: string;
+}
+
 export function ResponsesTab({ formId }: { formId: string }) {
   const { toast } = useToast();
   const { user } = useUser();
   const supabase = useSupabaseClient();
   const [responses, setResponses] = useState<ResponseData[]>([]);
+  const [demographics, setDemographics] = useState<DemographicData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -34,6 +48,13 @@ export function ResponsesTab({ formId }: { formId: string }) {
     { form_id: formId }
   );
 
+  // Fetch demographics data
+  const { data: demographicsData, loading: demographicsLoading } = useCollection<DemographicData>(
+    'demographics',
+    '*',
+    { form_id: formId }
+  );
+
   useEffect(() => {
     if (responsesData) {
       setResponses(responsesData);
@@ -41,34 +62,54 @@ export function ResponsesTab({ formId }: { formId: string }) {
   }, [responsesData]);
 
   useEffect(() => {
-    setIsLoading(responsesLoading);
-  }, [responsesLoading]);
+    if (demographicsData) {
+      setDemographics(demographicsData);
+    }
+  }, [demographicsData]);
+
+  useEffect(() => {
+    setIsLoading(responsesLoading || demographicsLoading);
+  }, [responsesLoading, demographicsLoading]);
 
   // Manual refresh function
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const { data, error } = await supabase
+      // Fetch responses
+      const { data: responsesData, error: responsesError } = await supabase
         .from('form_responses')
         .select('*')
         .eq('form_id', formId)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (responsesError) throw responsesError;
       
-      if (data) {
-        setResponses(data);
-        toast({
-          title: 'Refreshed',
-          description: 'Responses have been updated.',
-        });
+      // Fetch demographics
+      const { data: demographicsData, error: demographicsError } = await supabase
+        .from('demographics')
+        .select('*')
+        .eq('form_id', formId)
+        .order('created_at', { ascending: false });
+      
+      if (demographicsError) console.error('Error fetching demographics:', demographicsError);
+      
+      if (responsesData) {
+        setResponses(responsesData);
       }
+      if (demographicsData) {
+        setDemographics(demographicsData);
+      }
+      
+      toast({
+        title: 'Refreshed',
+        description: 'Responses and demographics have been updated.',
+      });
     } catch (error) {
-      console.error('Error refreshing responses:', error);
+      console.error('Error refreshing data:', error);
       toast({
         variant: 'destructive',
         title: 'Refresh Failed',
-        description: 'Could not refresh responses.',
+        description: 'Could not refresh data.',
       });
     } finally {
       setIsRefreshing(false);
@@ -76,7 +117,7 @@ export function ResponsesTab({ formId }: { formId: string }) {
   };
 
   const exportToCSV = () => {
-    if (responses.length === 0) {
+    if (responses.length === 0 && demographics.length === 0) {
       toast({
         variant: 'destructive',
         title: 'No Data to Export',
@@ -85,7 +126,7 @@ export function ResponsesTab({ formId }: { formId: string }) {
       return;
     }
 
-    // Get all unique field names from parsed_fields
+    // Get all unique field names from parsed_fields in responses
     const allFields = new Set<string>();
     responses.forEach(response => {
       if (response.parsed_fields) {
@@ -94,8 +135,20 @@ export function ResponsesTab({ formId }: { formId: string }) {
     });
     const fieldNames = Array.from(allFields).sort();
     
-    // Build CSV with dynamic columns
-    const headers = ['Question', 'Response', 'Date', 'Time', ...fieldNames];
+    // Get demographic fields from parsed_json
+    const demographicFields = new Set<string>();
+    demographics.forEach(demo => {
+      if (demo.parsed_json?.fields) {
+        Object.keys(demo.parsed_json.fields).forEach(key => demographicFields.add(key));
+      }
+    });
+    const demoFieldNames = Array.from(demographicFields).sort();
+    
+    // Get the first demographic entry (usually one per form submission)
+    const demographicData = demographics.length > 0 ? demographics[0] : null;
+    
+    // Build CSV with dynamic columns including demographics
+    const headers = ['Question', 'Response', 'Date', 'Time', ...demoFieldNames, ...fieldNames];
     const csvContent = [
       headers.join(','),
       ...responses.map(response => {
@@ -106,13 +159,19 @@ export function ResponsesTab({ formId }: { formId: string }) {
           `"${new Date(response.created_at).toLocaleTimeString()}"`
         ];
         
+        // Add demographic field values
+        const demoValues = demoFieldNames.map(fieldName => {
+          const value = demographicData?.parsed_json?.fields?.[fieldName];
+          return value ? `"${value}"` : '""';
+        });
+        
         // Add parsed field values in the correct order
         const parsedFieldValues = fieldNames.map(fieldName => {
           const value = response.parsed_fields?.[fieldName];
           return value ? `"${value}"` : '""';
         });
         
-        return [...baseFields, ...parsedFieldValues].join(',');
+        return [...baseFields, ...demoValues, ...parsedFieldValues].join(',');
       })
     ].join('\n');
 
@@ -126,9 +185,10 @@ export function ResponsesTab({ formId }: { formId: string }) {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
 
+    const totalColumns = fieldNames.length + demoFieldNames.length + 4; // +4 for base fields
     toast({
       title: 'Export Complete',
-      description: 'Responses have been exported to CSV file.',
+      description: `Exported ${responses.length} responses with ${demoFieldNames.length} demographic field(s) and ${fieldNames.length} extracted field(s).`,
     });
   };
 
@@ -153,6 +213,51 @@ export function ResponsesTab({ formId }: { formId: string }) {
 
   return (
     <div className="space-y-6">
+      {/* Demographics Summary */}
+      {demographics.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Demographics ({demographics.length})
+            </CardTitle>
+            <CardDescription>
+              Demographic information collected for this form
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {demographics.map((demo) => (
+                <div key={demo.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline">{demo.source}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(demo.created_at).toLocaleDateString()} {new Date(demo.created_at).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  
+                  {demo.parsed_json?.fields && Object.keys(demo.parsed_json.fields).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {Object.entries(demo.parsed_json.fields).map(([key, value]) => (
+                        <Badge key={key} variant="secondary" className="text-xs">
+                          {key}: {String(value)}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {demo.raw_text && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      "{demo.raw_text}"
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
       {/* Responses Summary */}
       <Card>
         <CardHeader>
@@ -203,7 +308,7 @@ export function ResponsesTab({ formId }: { formId: string }) {
             </div>
           </CardTitle>
           <CardDescription>
-            All responses submitted for this form.
+            All responses submitted for this form. {demographics.length > 0 && `Includes demographic data from ${demographics.length} submission(s).`}
           </CardDescription>
         </CardHeader>
         <CardContent>
