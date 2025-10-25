@@ -47,3 +47,4 @@ CREATE TRIGGER update_user_google_drive_links_updated_at
   BEFORE UPDATE ON public.user_google_drive_links 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+

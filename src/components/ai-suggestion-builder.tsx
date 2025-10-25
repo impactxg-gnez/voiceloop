@@ -20,7 +20,7 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
   const [isRecording, setIsRecording] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(true);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
@@ -226,10 +226,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       
       if (result.transcription) {
         setDescription(result.transcription);
-        setIsVoiceMode(false);
+        // Keep in voice mode so users can easily record again or edit
         toast({
           title: 'Transcription Complete',
-          description: 'Audio has been transcribed successfully.',
+          description: 'Audio has been transcribed. You can edit the text or record again.',
         });
       } else {
         throw new Error('No transcription received');
@@ -363,42 +363,27 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
           <div className="space-y-2">
             <label className="text-sm font-medium">Describe your form:</label>
             <div className="space-y-2">
-              <Textarea
-                placeholder="For best results tell us:
-• Use case
-• Target audience  
-• What questions do you want to answer through it"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-[100px] resize-none"
-                disabled={isGenerating}
-              />
-              
-              <div className="flex items-center gap-2">
-                {!isVoiceMode ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsVoiceMode(true)}
-                    disabled={isGenerating}
-                  >
-                    <Mic className="h-4 w-4 mr-2" />
-                    Switch to voice
-                  </Button>
-                ) : (
+              {isVoiceMode ? (
+                <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Button
                       variant={isRecording ? "destructive" : "default"}
-                      size="sm"
+                      size="lg"
                       onClick={isRecording ? stopRecording : startRecording}
                       disabled={isGenerating}
+                      className="flex-1"
                     >
                       {isRecording ? (
-                        <MicOff className="h-4 w-4 mr-2" />
+                        <>
+                          <MicOff className="h-5 w-5 mr-2" />
+                          Stop Recording
+                        </>
                       ) : (
-                        <Mic className="h-4 w-4 mr-2" />
+                        <>
+                          <Mic className="h-5 w-5 mr-2" />
+                          Start Voice Recording
+                        </>
                       )}
-                      {isRecording ? 'Stop Recording' : 'Start Recording'}
                     </Button>
                     <Button
                       variant="outline"
@@ -409,8 +394,41 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                       Switch to text
                     </Button>
                   </div>
-                )}
-              </div>
+                  <p className="text-xs text-muted-foreground">
+                    For best results tell us: use case, target audience, and what questions you want to answer
+                  </p>
+                  {description && (
+                    <Textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className="min-h-[100px] resize-none"
+                      disabled={isGenerating}
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Textarea
+                    placeholder="For best results tell us:
+• Use case
+• Target audience  
+• What questions do you want to answer through it"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="min-h-[100px] resize-none"
+                    disabled={isGenerating}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsVoiceMode(true)}
+                    disabled={isGenerating}
+                  >
+                    <Mic className="h-4 w-4 mr-2" />
+                    Switch to voice
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 

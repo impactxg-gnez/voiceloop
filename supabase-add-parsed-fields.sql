@@ -15,3 +15,6 @@ ON form_responses USING GIN (parsed_fields);
 
 -- Example: Query responses where age > 18
 -- SELECT * FROM form_responses WHERE (parsed_fields->>'age')::int > 18;
+
+
+

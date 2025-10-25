@@ -76,3 +76,6 @@ GROUP BY f.id, f.title, f.owner_uid;
 -- Grant access to the view
 GRANT SELECT ON form_responses_summary TO authenticated;
 GRANT SELECT ON form_responses_summary TO anon;
+
+
+

@@ -11,3 +11,4 @@ WHERE question_count > 0;
 
 -- Create index for better performance
 CREATE INDEX IF NOT EXISTS idx_forms_is_published ON forms(is_published);
+

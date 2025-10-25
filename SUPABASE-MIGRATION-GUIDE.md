@@ -249,3 +249,6 @@ If you encounter any issues:
 **Migration completed successfully! 🎉**
 
 Your VoiceForm app now uses Supabase as the primary data storage, providing better reliability, security, and simplicity.
+
+
+
