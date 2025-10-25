@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Mic, MicOff, Loader2, Sparkles, CheckCircle, Trash2 } from 'lucide-react';
+import { Mic, MicOff, Loader2, Sparkles, CheckCircle, Trash2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface AISuggestionBuilderProps {
@@ -23,6 +23,10 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
   const [isVoiceMode, setIsVoiceMode] = useState(true);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const { toast } = useToast();
 
   const generateFormTitle = (description: string): string => {
@@ -167,12 +171,89 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
         
         await transcribeAudio(audioBlob);
         stream.getTracks().forEach(track => track.stop());
+        
+        // Clean up audio visualization
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        try { 
+          audioContextRef.current?.close(); 
+        } catch {}
+        audioContextRef.current = null;
+        analyserRef.current = null;
       };
 
       // Start recording without time slice to capture all data at once
       mediaRecorderRef.current.start();
       setIsRecording(true);
       console.log('Recording started with mimeType:', mediaRecorderRef.current.mimeType);
+      
+      // Set up audio visualization
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({
+          sampleRate: 44100
+        });
+        audioContextRef.current = audioCtx;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.8;
+        
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            const draw = () => {
+              if (!isRecording && animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+                return;
+              }
+              
+              animationFrameRef.current = requestAnimationFrame(draw);
+              
+              analyser.getByteTimeDomainData(dataArray);
+              
+              ctx.fillStyle = 'rgb(20, 20, 30)';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = 'rgb(59, 130, 246)'; // Blue color
+              ctx.beginPath();
+              
+              const sliceWidth = canvas.width / bufferLength;
+              let x = 0;
+              
+              for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * canvas.height) / 2;
+                
+                if (i === 0) {
+                  ctx.moveTo(x, y);
+                } else {
+                  ctx.lineTo(x, y);
+                }
+                
+                x += sliceWidth;
+              }
+              
+              ctx.lineTo(canvas.width, canvas.height / 2);
+              ctx.stroke();
+            };
+            
+            draw();
+          }
+        }
+      } catch (err) {
+        console.error('Error setting up audio visualization:', err);
+      }
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
@@ -191,6 +272,12 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
       }
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      
+      // Clean up audio visualization
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
     }
   };
 
@@ -394,9 +481,28 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
                       Switch to text
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    For best results tell us: use case, target audience, and what questions you want to answer
-                  </p>
+                  
+                  {/* Waveform visualization */}
+                  {isRecording && (
+                    <div className="space-y-2">
+                      <canvas 
+                        ref={canvasRef} 
+                        width={600} 
+                        height={100} 
+                        className="w-full rounded-lg border border-border"
+                      />
+                      <p className="text-xs text-center text-muted-foreground animate-pulse">
+                        🎤 Recording in progress...
+                      </p>
+                    </div>
+                  )}
+                  
+                  {!isRecording && !description && (
+                    <p className="text-xs text-muted-foreground">
+                      For best results tell us: use case, target audience, and what questions you want to answer
+                    </p>
+                  )}
+                  
                   {description && (
                     <Textarea
                       value={description}

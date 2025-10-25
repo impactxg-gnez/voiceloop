@@ -642,10 +642,20 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
           }
         }));
       
-      // Reset progress after a delay
+      // Automatically move to next question after a short delay
       setTimeout(() => {
         setProcessingProgress(0);
-      }, 2000);
+        // Move to next question if not the last one
+        if (currentQuestionIndex < (questions?.length || 0) - 1) {
+          setCurrentQuestionIndex(prev => prev + 1);
+        } else {
+          // If it's the last question, show completion message
+          toast({
+            title: 'All Questions Completed!',
+            description: 'Thank you for your feedback.',
+          });
+        }
+      }, 1500);
       
       } catch (error) {
         console.error('Error transcribing audio:', error);
