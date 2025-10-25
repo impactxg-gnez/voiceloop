@@ -615,23 +615,43 @@ export default function RecordFormPage({ params }: { params: { formId: string } 
       setProcessingProgress(95);
       setDebugText('Saving data to database...');
       
+      // Try to update with parsed_fields first
+      let updateData: any = { response_text: transcriptionText };
+      
+      // Only include parsed_fields if we have data and the column exists
+      if (Object.keys(parsedFields).length > 0) {
+        updateData.parsed_fields = parsedFields;
+      }
+      
       const { error: updateError } = await supabase
         .from('form_responses')
-        .update({ 
-          response_text: transcriptionText,
-          parsed_fields: parsedFields
-        })
+        .update(updateData)
         .eq('id', inserted.id);
 
       if (updateError) {
         console.error('Error updating response:', updateError);
-        throw new Error(`Failed to update response: ${updateError.message}`);
+        
+        // If parsed_fields column doesn't exist, try without it
+        if (updateError.message.includes('parsed_fields')) {
+          console.warn('parsed_fields column not found, updating without it. Please run migration: supabase-add-parsed-fields-column.sql');
+          
+          const { error: retryError } = await supabase
+            .from('form_responses')
+            .update({ response_text: transcriptionText })
+            .eq('id', inserted.id);
+          
+          if (retryError) {
+            throw new Error(`Failed to update response: ${retryError.message}`);
+          }
+        } else {
+          throw new Error(`Failed to update response: ${updateError.message}`);
+        }
       }
 
       console.log('Successfully updated response with transcription:', {
         id: inserted.id,
         transcriptionText,
-        parsedFields
+        parsedFieldsIncluded: Object.keys(parsedFields).length > 0
       });
 
       // Step 5: Complete (100%)
