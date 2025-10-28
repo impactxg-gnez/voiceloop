@@ -51,6 +51,19 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
   const generateFormTitle = (description: string): string => {
     const desc = description.toLowerCase();
     
+    // Check for business types first (more specific)
+    if (desc.includes('hotel') || desc.includes('stay') || desc.includes('accommodation')) {
+      return 'Hotel Guest Experience Insights';
+    } else if (desc.includes('restaurant') || desc.includes('dining') || desc.includes('cafe')) {
+      return 'Restaurant Customer Insights';
+    } else if (desc.includes('retail') || desc.includes('store') || desc.includes('shop')) {
+      return 'Retail Customer Insights';
+    } else if (desc.includes('service') || desc.includes('support')) {
+      return 'Service Experience Insights';
+    } else if (desc.includes('product')) {
+      return 'Product Feedback & Insights';
+    }
+    
     // Extract specific fields mentioned
     const fields = [];
     if (desc.includes('name')) fields.push('Name');
@@ -76,13 +89,9 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
     if (desc.includes('demographic')) {
       return 'Demographic Information Form';
     } else if (desc.includes('feedback')) {
-      return 'Customer Feedback Form';
+      return 'Customer Insights & Feedback';
     } else if (desc.includes('survey')) {
-      return 'Survey Form';
-    } else if (desc.includes('hotel')) {
-      return 'Hotel Feedback Form';
-    } else if (desc.includes('restaurant')) {
-      return 'Restaurant Feedback Form';
+      return 'Customer Survey';
     } else {
       return 'Voice Feedback Form';
     }
@@ -90,6 +99,19 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
 
   const generateFormDescription = (description: string): string => {
     const desc = description.toLowerCase();
+    
+    // Check for business types first (more specific)
+    if (desc.includes('hotel') || desc.includes('stay') || desc.includes('accommodation')) {
+      return 'Help us improve your experience by sharing what made your stay special and what we could do better';
+    } else if (desc.includes('restaurant') || desc.includes('dining') || desc.includes('cafe')) {
+      return 'Share your dining experience to help us serve you better - tell us what you loved and what we can improve';
+    } else if (desc.includes('retail') || desc.includes('store') || desc.includes('shop')) {
+      return 'Your insights help us improve - share what you love and what you\'d like to see';
+    } else if (desc.includes('service') || desc.includes('support')) {
+      return 'Your feedback drives our service improvements - share your experience with us';
+    } else if (desc.includes('product')) {
+      return 'Help us make better products by sharing your experience and suggestions';
+    }
     
     // Extract specific fields mentioned
     const fields = [];
@@ -116,13 +138,9 @@ export function AISuggestionBuilder({ onSuggestionsGenerated, onFormMetadataGene
     if (desc.includes('demographic')) {
       return 'Please provide your demographic information';
     } else if (desc.includes('feedback')) {
-      return 'Please share your feedback and experience';
+      return 'Share detailed feedback to help us understand and improve your experience';
     } else if (desc.includes('survey')) {
-      return 'Please answer the survey questions';
-    } else if (desc.includes('hotel')) {
-      return 'Please share your hotel experience';
-    } else if (desc.includes('restaurant')) {
-      return 'Please share your dining experience';
+      return 'Your responses help us make informed decisions';
     } else {
       return 'Please provide your feedback';
     }
